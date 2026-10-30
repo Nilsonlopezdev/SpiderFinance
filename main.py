@@ -44,6 +44,8 @@ MUTED = "#91A1B4"
 DIM = "#5D6D80"
 WHITE = "#FFFFFF"
 
+CONTENT_MAX = 980  # ancho máximo del contenido en las páginas internas
+
 SIDE_COMPACT = 78
 SIDE_EXPANDED = 236
 
@@ -177,6 +179,7 @@ class TelaranaApp(ctk.CTk):
         self.content.grid(row=1, column=1, sticky="nsew")
         self.content.grid_columnconfigure(0, weight=1)
         self.content.grid_rowconfigure(0, weight=1)
+        self.content.bind("<Configure>", self.fit_body)
 
         self.render_page()
         self.after(400, self.animate_ui)
@@ -399,12 +402,28 @@ class TelaranaApp(ctk.CTk):
         for w in self.content.winfo_children():
             w.destroy()
         self.update_period()
-        self.body = ctk.CTkScrollableFrame(
+        self.scroll = ctk.CTkScrollableFrame(
             self.content, fg_color=BG, corner_radius=0,
             scrollbar_button_color="#172432", scrollbar_button_hover_color="#273A4D"
         )
-        self.body.grid(row=0, column=0, sticky="nsew", padx=18, pady=(6, 14))
+        self.scroll.grid(row=0, column=0, sticky="nsew", padx=18, pady=(6, 14))
+        # Tres columnas: espacio | contenido (ancho máximo) | espacio -> contenido centrado
+        self.scroll.grid_columnconfigure(0, weight=1)
+        self.scroll.grid_columnconfigure(1, weight=0)
+        self.scroll.grid_columnconfigure(2, weight=1)
+        self.body = ctk.CTkFrame(self.scroll, fg_color="transparent", corner_radius=0)
+        self.body.grid(row=0, column=1, sticky="nsew")
         self.body.grid_columnconfigure(0, weight=1)
+        self.fit_body()
+
+    def fit_body(self, _event=None):
+        """Centra el contenido y limita su ancho en las páginas internas."""
+        scroll = getattr(self, "scroll", None)
+        if scroll is None or not scroll.winfo_exists():
+            return
+        avail = max(self.content.winfo_width() - 90, 600)
+        width = avail if self.active_page == "Inicio" else min(avail, CONTENT_MAX)
+        scroll.grid_columnconfigure(1, minsize=width)
 
     def render_page(self):
         self.clear_content()
@@ -678,15 +697,17 @@ class TelaranaApp(ctk.CTk):
                 empty = ctk.CTkFrame(self.body, fg_color=PANEL, border_width=1, border_color=BORDER_SOFT, corner_radius=12, height=62)
                 empty.grid(row=row, column=0, sticky="ew", pady=3)
                 empty.grid_propagate(False)
-                ctk.CTkLabel(empty, text="Sin registros en este periodo.", text_color=MUTED).pack(anchor="w", padx=18, pady=20)
+                ctk.CTkLabel(empty, text="Sin registros en este periodo.", text_color=MUTED).place(relx=0.5, rely=0.5, anchor="center")
                 row += 1
             for rec in records:
                 card = ctk.CTkFrame(self.body, fg_color=PANEL, border_width=1, border_color=BORDER, corner_radius=12, height=64)
                 card.grid(row=row, column=0, sticky="ew", pady=3)
                 card.grid_propagate(False)
                 card.grid_columnconfigure(0, weight=1)
-                ctk.CTkLabel(card, text=rec["concept"], text_color=TEXT, font=("Segoe UI", 11, "bold")).grid(row=0, column=0, sticky="w", padx=16)
-                ctk.CTkLabel(card, text=money(rec["amount"]), text_color=accent, font=("Segoe UI", 11, "bold")).grid(row=0, column=1, padx=15)
+                card.grid_columnconfigure(1, minsize=150)
+                card.grid_rowconfigure(0, weight=1)
+                ctk.CTkLabel(card, text=rec["concept"], text_color=TEXT, font=("Segoe UI", 12, "bold")).grid(row=0, column=0, sticky="w", padx=18)
+                ctk.CTkLabel(card, text=money(rec["amount"]), text_color=accent, font=("Segoe UI", 12, "bold"), anchor="e").grid(row=0, column=1, sticky="e", padx=15)
                 if recurrent:
                     ctk.CTkButton(card, text="Editar próximo mes", width=145, height=30, fg_color="#172331", hover_color="#223449", command=lambda k=kind, i=rec["id"], c=rec["concept"], a=rec["amount"]: self.edit_recurring_dialog(k, i, c, a)).grid(row=0, column=2, padx=4)
                     ctk.CTkButton(card, text="Desactivar", width=90, height=30, fg_color=RED_DARK, hover_color="#51202A", command=lambda k=kind, i=rec["id"]: self.deactivate(k, i)).grid(row=0, column=3, padx=10)
@@ -786,17 +807,31 @@ class TelaranaApp(ctk.CTk):
     def show_history(self):
         self.section_title("Historial", "Consulta la evolución de tus ingresos, obligaciones y resultado mensual.")
         rows = db.history(24)
-        for i, (month, inc, obl, res) in enumerate(rows, start=1):
+        cols = {1: 190, 2: 190, 3: 150}
+
+        def align(frame):
+            frame.grid_columnconfigure(0, weight=1)
+            for c, w in cols.items():
+                frame.grid_columnconfigure(c, minsize=w)
+
+        head = ctk.CTkFrame(self.body, fg_color="transparent", height=26)
+        head.grid(row=1, column=0, sticky="ew", pady=(0, 2))
+        align(head)
+        for c, t in ((0, "MES"), (1, "INGRESOS"), (2, "OBLIGACIONES"), (3, "RESULTADO")):
+            ctk.CTkLabel(head, text=t, text_color=DIM, font=("Segoe UI", 9, "bold"), anchor="w" if c == 0 else "e").grid(
+                row=0, column=c, sticky="w" if c == 0 else "e", padx=18 if c in (0, 3) else 12)
+        for i, (month, inc, obl, res) in enumerate(rows, start=2):
             state = status(res) if inc or obl else "NEUTRO"
             accent = GREEN if state == "POSITIVO" else RED if state == "NEGATIVO" else BLUE
-            f = ctk.CTkFrame(self.body, fg_color=PANEL, border_width=1, border_color=BORDER, corner_radius=12, height=64)
+            f = ctk.CTkFrame(self.body, fg_color=PANEL, border_width=1, border_color=BORDER, corner_radius=12, height=60)
             f.grid(row=i, column=0, sticky="ew", pady=3)
             f.grid_propagate(False)
-            f.grid_columnconfigure(0, weight=1)
-            ctk.CTkLabel(f, text=month_label(month), text_color=TEXT, font=("Segoe UI", 11, "bold")).grid(row=0, column=0, padx=18, sticky="w")
-            ctk.CTkLabel(f, text=f"Ingresos  {money(inc)}", text_color=GREEN, font=("Segoe UI", 10)).grid(row=0, column=1, padx=12)
-            ctk.CTkLabel(f, text=f"Obligaciones  {money(obl)}", text_color=RED, font=("Segoe UI", 10)).grid(row=0, column=2, padx=12)
-            ctk.CTkLabel(f, text=money(res), text_color=accent, font=("Segoe UI", 11, "bold")).grid(row=0, column=3, padx=18)
+            align(f)
+            f.grid_rowconfigure(0, weight=1)
+            ctk.CTkLabel(f, text=month_label(month), text_color=TEXT, font=("Segoe UI", 12, "bold")).grid(row=0, column=0, padx=18, sticky="w")
+            ctk.CTkLabel(f, text=money(inc), text_color=GREEN, font=("Segoe UI", 11), anchor="e").grid(row=0, column=1, padx=12, sticky="e")
+            ctk.CTkLabel(f, text=money(obl), text_color=RED, font=("Segoe UI", 11), anchor="e").grid(row=0, column=2, padx=12, sticky="e")
+            ctk.CTkLabel(f, text=money(res), text_color=accent, font=("Segoe UI", 12, "bold"), anchor="e").grid(row=0, column=3, padx=18, sticky="e")
 
     def show_streaks(self):
         state, count = streak_info()
@@ -820,26 +855,31 @@ class TelaranaApp(ctk.CTk):
         self.section_title("Proyección", "Estimación basada en ingresos y obligaciones recurrentes del periodo seleccionado.")
         data = db.get_month_data(self.current_month)
         cards = [("Ingresos estimados", money(data["income"]), GREEN), ("Obligaciones estimadas", money(data["obligations"]), RED), ("Resultado estimado", money(data["result"]), BLUE)]
+        grid = ctk.CTkFrame(self.body, fg_color="transparent")
+        grid.grid(row=1, column=0, sticky="ew")
         for i, (title, value, color) in enumerate(cards):
-            self.metric_card(self.body, 1, i, title, value, color)
-        self.panel(self.body, 2, 0, 3, "Lectura del periodo", "La proyección no crea ni modifica registros. Sirve para anticipar el resultado usando la información ya guardada.")
+            grid.grid_columnconfigure(i, weight=1, uniform="metric")
+            self.metric_card(grid, 0, i, title, value, color)
+        self.panel(self.body, 2, 0, 1, "Lectura del periodo", "La proyección no crea ni modifica registros. Sirve para anticipar el resultado usando la información ya guardada.")
 
     def metric_card(self, parent, row, col, title, value, color):
         f = ctk.CTkFrame(parent, fg_color=PANEL, border_width=1, border_color=BORDER, corner_radius=15, height=125)
         f.grid(row=row, column=col, sticky="ew", padx=5, pady=5)
         f.grid_propagate(False)
-        ctk.CTkLabel(f, text=title.upper(), text_color=MUTED, font=("Segoe UI", 9, "bold")).pack(anchor="w", padx=18, pady=(17, 4))
-        ctk.CTkLabel(f, text=value, text_color=color, font=("Segoe UI", 23, "bold")).pack(anchor="w", padx=18)
+        inner = ctk.CTkFrame(f, fg_color="transparent")
+        inner.place(relx=0.5, rely=0.5, anchor="center")
+        ctk.CTkLabel(inner, text=title.upper(), text_color=MUTED, font=("Segoe UI", 9, "bold")).pack(pady=(0, 6))
+        ctk.CTkLabel(inner, text=value, text_color=color, font=("Segoe UI", 23, "bold")).pack()
 
     def show_simulator(self):
         self.section_title("Simulador", "Prueba una nueva obligación sin guardarla en tus registros.")
         data = db.get_month_data(self.current_month)
-        self.panel(self.body, 1, 0, 3, "Resultado actual", f"Ingresos: {money(data['income'])}\nObligaciones: {money(data['obligations'])}\nResultado: {money(data['result'])}")
-        box = ctk.CTkFrame(self.body, fg_color=PANEL, border_width=1, border_color=BORDER, corner_radius=15, height=150)
-        box.grid(row=2, column=0, columnspan=3, sticky="ew", pady=6)
-        box.grid_propagate(False)
+        self.panel(self.body, 1, 0, 1, "Resultado actual", f"Ingresos: {money(data['income'])}\nObligaciones: {money(data['obligations'])}\nResultado: {money(data['result'])}")
+        box = ctk.CTkFrame(self.body, fg_color=PANEL, border_width=1, border_color=BORDER, corner_radius=15, height=96)
+        box.grid(row=2, column=0, sticky="ew", pady=6)
+        box.pack_propagate(False)
         amount = ctk.CTkEntry(box, placeholder_text="Valor hipotético", width=320, height=40)
-        amount.pack(side="left", padx=18, pady=52)
+        amount.pack(side="left", padx=18)
         result = ctk.CTkLabel(box, text="Resultado simulado: —", font=("Segoe UI", 15, "bold"), text_color=TEXT)
         result.pack(side="left", padx=10)
 
@@ -861,14 +901,18 @@ class TelaranaApp(ctk.CTk):
             f.grid(row=i, column=0, sticky="ew", pady=4)
             f.grid_propagate(False)
             f.grid_columnconfigure(0, weight=1)
-            ctk.CTkLabel(f, text=g["name"], font=("Segoe UI", 12, "bold"), text_color=TEXT).grid(row=0, column=0, sticky="w", padx=16, pady=(12, 0))
-            ctk.CTkLabel(f, text=f"{money(g['saved'])} de {money(g['target'])}", text_color=MUTED, font=("Segoe UI", 9)).grid(row=1, column=0, sticky="w", padx=16)
+            f.grid_rowconfigure((0, 1), weight=1)
+            ctk.CTkLabel(f, text=g["name"], font=("Segoe UI", 12, "bold"), text_color=TEXT).grid(row=0, column=0, sticky="sw", padx=18, pady=(0, 0))
+            ctk.CTkLabel(f, text=f"{money(g['saved'])} de {money(g['target'])}", text_color=MUTED, font=("Segoe UI", 9)).grid(row=1, column=0, sticky="nw", padx=18)
             bar = ctk.CTkProgressBar(f, width=220)
             bar.set(min(g["saved"] / g["target"], 1))
             bar.grid(row=0, column=1, rowspan=2, padx=12)
             ctk.CTkButton(f, text="＋ Aportar", width=100, height=32, fg_color=RED, command=lambda gid=g["id"]: self.contribute_dialog(gid)).grid(row=0, column=2, rowspan=2, padx=15)
         if not goals:
-            ctk.CTkLabel(self.body, text="Todavía no tienes objetivos de ahorro.", text_color=MUTED).grid(row=2, column=0, sticky="w", pady=18)
+            empty = ctk.CTkFrame(self.body, fg_color=PANEL, border_width=1, border_color=BORDER_SOFT, corner_radius=14, height=110)
+            empty.grid(row=2, column=0, sticky="ew", pady=8)
+            empty.grid_propagate(False)
+            ctk.CTkLabel(empty, text="Todavía no tienes objetivos de ahorro.", text_color=MUTED, font=("Segoe UI", 12)).place(relx=0.5, rely=0.5, anchor="center")
 
     def add_goal_dialog(self):
         win = ctk.CTkToplevel(self)
@@ -918,12 +962,12 @@ class TelaranaApp(ctk.CTk):
 
     def show_game(self):
         self.section_title("Mini juego", "Un pequeño reto para poner a prueba tu criterio financiero.")
-        self.panel(self.body, 1, 0, 3, "Reto rápido", "Si recibes $1.000.000 y tus obligaciones son $750.000, ¿cuánto te queda?")
-        box = ctk.CTkFrame(self.body, fg_color=PANEL, border_width=1, border_color=BORDER, corner_radius=15, height=105)
-        box.grid(row=2, column=0, columnspan=3, sticky="ew", pady=6)
-        box.grid_propagate(False)
+        self.panel(self.body, 1, 0, 1, "Reto rápido", "Si recibes $1.000.000 y tus obligaciones son $750.000, ¿cuánto te queda?")
+        box = ctk.CTkFrame(self.body, fg_color=PANEL, border_width=1, border_color=BORDER, corner_radius=15, height=96)
+        box.grid(row=2, column=0, sticky="ew", pady=6)
+        box.pack_propagate(False)
         answer = ctk.CTkEntry(box, placeholder_text="Tu respuesta en pesos", width=300, height=40)
-        answer.pack(side="left", padx=18, pady=30)
+        answer.pack(side="left", padx=18)
         feedback = ctk.CTkLabel(box, text="", text_color=GREEN, font=("Segoe UI", 11, "bold"))
         feedback.pack(side="left", padx=10)
 
