@@ -1375,15 +1375,63 @@ class TelaranaApp(ctk.CTk):
         option_row(behavior, 2, "Barra lateral abierta al iniciar", "Muestra los nombres de las secciones cada vez que abres la aplicación.", make_switch("sidebar_expanded"))
         ctk.CTkFrame(behavior, height=10, fg_color="transparent").grid(row=6, column=0)
 
+        # --- Acceso directo --------------------------------------------------
+        shortcut = card(4, "Acceso directo", "Crea un icono de TELARAÑA en tu escritorio para abrir la aplicación con doble clic.")
+        status_label = ctk.CTkLabel(shortcut, text="", text_color=MUTED, font=(FONT, 10), anchor="w", wraplength=520, justify="left")
+
+        def make_shortcut_button(parent):
+            def run():
+                ok, message = self.create_desktop_shortcut()
+                status_label.configure(text=message, text_color=GREEN if ok else RED)
+            return ctk.CTkButton(parent, text="Crear en el escritorio", width=190, height=38, fg_color=RED, hover_color=RED_2, font=(FONT, 12, "bold"), command=run)
+
+        option_row(shortcut, 1, "Escritorio", "Si mueves la carpeta del programa, vuelve a crearlo.", make_shortcut_button)
+        status_label.grid(row=4, column=0, columnspan=2, sticky="w", padx=22, pady=(0, 6))
+        ctk.CTkFrame(shortcut, height=8, fg_color="transparent").grid(row=5, column=0)
+
         # --- Restablecer -----------------------------------------------------
         def restore():
             if messagebox.askyesno("Restablecer ajustes", "¿Volver todos los ajustes a sus valores originales? Tus ingresos, obligaciones y objetivos no se modifican."):
                 settings.reset()
                 self.render_page()
 
-        ctk.CTkButton(self.body, text="Restablecer ajustes", height=40, width=200, fg_color="#172331", hover_color=RED_DARK, command=restore).grid(row=4, column=0, sticky="w", pady=(8, 4))
-        ctk.CTkLabel(self.body, text=f"TELARAÑA v{__version__}", text_color=MUTED, font=(FONT, 10, "bold"), anchor="w").grid(row=5, column=0, sticky="w", pady=(10, 0))
-        ctk.CTkLabel(self.body, text=f"Base de datos local: {db.DB_PATH}", text_color=DIM, font=(FONT, 9), wraplength=900, anchor="w", justify="left").grid(row=6, column=0, sticky="w", pady=(4, 14))
+        ctk.CTkButton(self.body, text="Restablecer ajustes", height=40, width=200, fg_color="#172331", hover_color=RED_DARK, command=restore).grid(row=5, column=0, sticky="w", pady=(8, 4))
+        ctk.CTkLabel(self.body, text=f"TELARAÑA v{__version__}", text_color=MUTED, font=(FONT, 10, "bold"), anchor="w").grid(row=6, column=0, sticky="w", pady=(10, 0))
+        ctk.CTkLabel(self.body, text=f"Base de datos local: {db.DB_PATH}", text_color=DIM, font=(FONT, 9), wraplength=900, anchor="w", justify="left").grid(row=7, column=0, sticky="w", pady=(4, 14))
+
+    def create_desktop_shortcut(self):
+        """Crea TELARAÑA.lnk en el escritorio (Windows). Devuelve (ok, mensaje)."""
+        if sys.platform != "win32":
+            return False, "El acceso directo solo se puede crear en Windows."
+        import os
+        import subprocess
+        try:
+            if getattr(sys, "frozen", False):
+                target, args, workdir = sys.executable, "", str(Path(sys.executable).parent)
+            else:
+                exe = Path(sys.executable)
+                pyw = exe.with_name("pythonw.exe")
+                target = str(pyw if pyw.exists() else exe)
+                args = f'"{BASE_DIR / "main.py"}"'
+                workdir = str(BASE_DIR)
+            env = dict(os.environ, TL_TARGET=target, TL_ARGS=args, TL_WORKDIR=workdir, TL_ICON=str(ASSET_DIR / "telarana.ico"))
+            script = (
+                "$d=[Environment]::GetFolderPath('Desktop');"
+                "$f=Join-Path $d ('TELARA'+[char]0xD1+'A.lnk');"
+                "$s=(New-Object -ComObject WScript.Shell).CreateShortcut($f);"
+                "$s.TargetPath=$env:TL_TARGET;$s.Arguments=$env:TL_ARGS;"
+                "$s.WorkingDirectory=$env:TL_WORKDIR;$s.IconLocation=$env:TL_ICON;"
+                "$s.Description='TELARANA';$s.Save();Write-Output $f"
+            )
+            result = subprocess.run(
+                ["powershell", "-NoProfile", "-NonInteractive", "-Command", script],
+                env=env, capture_output=True, text=True, timeout=30, creationflags=0x08000000
+            )
+            if result.returncode != 0:
+                return False, "No se pudo crear el acceso directo. Créalo manualmente con clic derecho en el escritorio."
+            return True, "Listo: ya tienes el icono TELARAÑA en tu escritorio."
+        except Exception:
+            return False, "No se pudo crear el acceso directo. Créalo manualmente con clic derecho en el escritorio."
 
     def show_alerts(self):
         data = db.get_month_data(self.current_month)
