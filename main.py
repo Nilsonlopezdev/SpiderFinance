@@ -10,7 +10,7 @@ from PIL import Image, ImageOps, ImageDraw
 from telarana import database as db
 from telarana import visuals
 from telarana.finance import (
-    money, status, committed_ratio, streak_info, streak_days, projection, alerts
+    money, status, committed_ratio, streak_info, streak_days, alerts
 )
 
 ctk.set_appearance_mode("dark")
@@ -80,7 +80,6 @@ NAV_ITEMS = [
     ("Historial", "clock"),
     ("Rachas", "flame"),
     ("Proyección", "trend"),
-    ("Simulador", "calc"),
     ("Objetivos de ahorro", "target"),
     ("Mini juego", "gamepad"),
     ("Configuración", "gear"),
@@ -434,7 +433,6 @@ class TelaranaApp(ctk.CTk):
             "Historial": self.show_history,
             "Rachas": self.show_streaks,
             "Proyección": self.show_projection,
-            "Simulador": self.show_simulator,
             "Objetivos de ahorro": self.show_goals,
             "Mini juego": self.show_game,
             "Configuración": self.show_settings,
@@ -653,7 +651,6 @@ class TelaranaApp(ctk.CTk):
         menu.add_command(label="＋  Agregar ingreso", command=lambda: self.open_entry("income"))
         menu.add_command(label="＋  Agregar obligación", command=lambda: self.open_entry("obligation"))
         menu.add_separator()
-        menu.add_command(label="Simulador", command=lambda: self.navigate("Simulador"))
         menu.add_command(label="Objetivos de ahorro", command=lambda: self.navigate("Objetivos de ahorro"))
         try:
             menu.tk_popup(self.winfo_pointerx(), self.winfo_pointery())
@@ -870,27 +867,6 @@ class TelaranaApp(ctk.CTk):
         inner.place(relx=0.5, rely=0.5, anchor="center")
         ctk.CTkLabel(inner, text=title.upper(), text_color=MUTED, font=("Segoe UI", 9, "bold")).pack(pady=(0, 6))
         ctk.CTkLabel(inner, text=value, text_color=color, font=("Segoe UI", 23, "bold")).pack()
-
-    def show_simulator(self):
-        self.section_title("Simulador", "Prueba una nueva obligación sin guardarla en tus registros.")
-        data = db.get_month_data(self.current_month)
-        self.panel(self.body, 1, 0, 1, "Resultado actual", f"Ingresos: {money(data['income'])}\nObligaciones: {money(data['obligations'])}\nResultado: {money(data['result'])}")
-        box = ctk.CTkFrame(self.body, fg_color=PANEL, border_width=1, border_color=BORDER, corner_radius=15, height=96)
-        box.grid(row=2, column=0, sticky="ew", pady=6)
-        box.pack_propagate(False)
-        amount = ctk.CTkEntry(box, placeholder_text="Valor hipotético", width=320, height=40)
-        amount.pack(side="left", padx=18)
-        result = ctk.CTkLabel(box, text="Resultado simulado: —", font=("Segoe UI", 15, "bold"), text_color=TEXT)
-        result.pack(side="left", padx=10)
-
-        def calc():
-            try:
-                val = float(amount.get().replace(".", "").replace(",", "."))
-                result.configure(text="Resultado simulado: " + money(projection(self.current_month, data, val)))
-            except Exception:
-                messagebox.showerror("Dato inválido", "Escribe un valor numérico.")
-
-        ctk.CTkButton(box, text="Calcular", width=110, height=38, fg_color=RED, command=calc).pack(side="left", padx=10)
 
     def show_goals(self):
         self.section_title("Objetivos de ahorro", "Crea metas y registra aportes sin alterar el resultado de ingresos menos obligaciones.")
