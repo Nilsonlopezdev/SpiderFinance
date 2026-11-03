@@ -6,12 +6,26 @@ import shutil
 from datetime import date
 
 ROOT = Path(__file__).resolve().parent.parent
-if getattr(sys, "frozen", False):
-    # Aplicación instalada (.exe): los datos van a la carpeta del usuario, no junto al programa.
-    DATA_DIR = Path(os.environ.get("APPDATA") or Path.home()) / "TELARANA"
-else:
-    DATA_DIR = ROOT / "data"
+LEGACY_DIR = ROOT / "data"  # ubicación de las versiones anteriores
+# Los datos viven en la carpeta del usuario, fuera del programa: actualizar o reemplazar
+# los archivos de la aplicación nunca los borra.
+DATA_DIR = Path(os.environ.get("APPDATA") or Path.home()) / "TELARANA"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def _migrate_legacy():
+    """Copia (una sola vez) la base y los ajustes de la carpeta data/ antigua."""
+    for name in ("telarana.db", "ajustes.json"):
+        old, new = LEGACY_DIR / name, DATA_DIR / name
+        try:
+            if old.exists() and not new.exists():
+                shutil.copy2(old, new)
+        except OSError:
+            pass
+
+
+if not getattr(sys, "frozen", False):
+    _migrate_legacy()
 DB_PATH = DATA_DIR / "telarana.db"
 
 def connect():

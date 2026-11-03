@@ -25,7 +25,7 @@ pip install -r requirements.txt
 python main.py
 ```
 
-En este modo los datos quedan en la carpeta `data/` del proyecto.
+Los datos se guardan siempre en `%APPDATA%\TELARANA`, fuera de la carpeta del programa. Si venías de una versión anterior, tu `data/telarana.db` se copia solo la primera vez.
 
 ## Publicar una nueva versión
 
