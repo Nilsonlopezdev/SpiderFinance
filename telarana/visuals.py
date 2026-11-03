@@ -8,7 +8,7 @@ import math
 from functools import lru_cache
 from pathlib import Path
 
-from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageOps
+from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageFont, ImageOps
 
 SS = 4  # factor de supersampling de los íconos
 
@@ -336,3 +336,39 @@ def render_ring(art_path, accent, ratio, bg, size=320, glow=1.0):
     ImageDraw.Draw(base).ellipse((off, off, off + diameter - 1, off + diameter - 1), outline=_hex("#0A0F16"), width=int(n * .006))
 
     return base.convert("RGB").resize((size, size), Image.Resampling.LANCZOS)
+
+
+def _font(size):
+    try:
+        return ImageFont.load_default(size=size)
+    except TypeError:  # Pillow antiguo sin tamaño configurable
+        return ImageFont.load_default()
+
+
+def render_history_chart(rows, labels, size=(940, 200), bg="#0E1620"):
+    """Barras agrupadas (ingresos verdes / obligaciones rojas) por mes."""
+    S = 2
+    W, H = size[0] * S, size[1] * S
+    im = Image.new("RGB", (W, H), _hex(bg)[:3])
+    d = ImageDraw.Draw(im)
+    font = _font(11 * S)
+    pad_l, pad_r, pad_t, pad_b = 16 * S, 16 * S, 14 * S, 30 * S
+    top = max([max(inc, obl) for _m, inc, obl, _r in rows] + [1])
+    base_y = H - pad_b
+    plot_h = base_y - pad_t
+    for g in range(4):
+        y = pad_t + plot_h * g / 3
+        d.line((pad_l, y, W - pad_r, y), fill=_hex("#18232F")[:3], width=S)
+    n = max(len(rows), 1)
+    slot = (W - pad_l - pad_r) / n
+    bw = slot * 0.24
+    for k, (_m, inc, obl, _r) in enumerate(rows):
+        cx = pad_l + slot * (k + 0.5)
+        for off, val, col in ((-bw * 0.55, inc, "#45E39A"), (bw * 0.55, obl, "#FF3347")):
+            if val > 0:
+                h = max(plot_h * val / top, 3 * S)
+                d.rounded_rectangle((cx + off - bw / 2, base_y - h, cx + off + bw / 2, base_y), radius=3 * S, fill=_hex(col)[:3])
+        lab = labels[k]
+        w = d.textlength(lab, font=font)
+        d.text((cx - w / 2, base_y + 8 * S), lab, font=font, fill=_hex("#91A1B4")[:3])
+    return im.resize(size, Image.Resampling.LANCZOS)

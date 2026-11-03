@@ -668,27 +668,141 @@ class TelaranaApp(ctk.CTk):
             ctk.CTkLabel(head, text=subtitle, font=("Segoe UI", 10), text_color=MUTED).pack(anchor="w", pady=(3, 0))
         ctk.CTkFrame(head, height=2, fg_color=RED).pack(anchor="w", fill="x", pady=(11, 0))
 
+    # ------------------------------------------------------------------
+    # Interactividad común: hover, barras animadas, tarjetas de resumen
+    # ------------------------------------------------------------------
+    def add_hover(self, card, base=BORDER, hover=RED_SOFT, bg=PANEL, bg_hover=PANEL_HOVER):
+        """Resalta la tarjeta al pasar el cursor (sin romper el hover de sus botones)."""
+        base_cls = getattr(ctk, "CTkBaseClass", None)
+
+        def inside():
+            try:
+                x, y = card.winfo_pointerxy()
+                return (card.winfo_rootx() <= x < card.winfo_rootx() + card.winfo_width()
+                        and card.winfo_rooty() <= y < card.winfo_rooty() + card.winfo_height())
+            except tk.TclError:
+                return False
+
+        def enter(_event=None):
+            try:
+                card.configure(border_color=hover, fg_color=bg_hover)
+            except tk.TclError:
+                pass
+
+        def leave(_event=None):
+            def check():
+                try:
+                    if not inside():
+                        card.configure(border_color=base, fg_color=bg)
+                except tk.TclError:
+                    pass
+            card.after(30, check)
+
+        def walk(widget):
+            try:
+                widget.bind("<Enter>", enter)
+                widget.bind("<Leave>", leave)
+            except Exception:
+                pass
+            if isinstance(widget, ctk.CTkFrame):
+                for child in widget.winfo_children():
+                    if base_cls is None or isinstance(child, base_cls):
+                        walk(child)
+
+        walk(card)
+
+    def animate_bar(self, bar, target, steps=20, delay=16):
+        """La barra se llena con una animación suave al abrir la página."""
+        target = max(0.0, min(float(target), 1.0))
+
+        def tick(i=1):
+            try:
+                if not bar.winfo_exists():
+                    return
+                eased = 1 - (1 - i / steps) ** 3
+                bar.set(target * eased)
+                if i < steps:
+                    bar.after(delay, tick, i + 1)
+            except tk.TclError:
+                pass
+
+        try:
+            bar.set(0)
+        except tk.TclError:
+            return
+        tick()
+
+    def kpi_tile(self, parent, col, icon, label, value, color, tile_bg):
+        parent.grid_columnconfigure(col, weight=1, uniform="kpi")
+        f = ctk.CTkFrame(parent, fg_color=PANEL, border_width=1, border_color=BORDER, corner_radius=14, height=88)
+        f.grid(row=0, column=col, sticky="ew", padx=5, pady=4)
+        f.grid_propagate(False)
+        f.grid_columnconfigure(1, weight=1)
+        f.grid_rowconfigure((0, 1), weight=1)
+        tile = ctk.CTkFrame(f, width=46, height=46, corner_radius=23, fg_color=tile_bg)
+        tile.grid(row=0, column=0, rowspan=2, padx=(16, 12))
+        tile.grid_propagate(False)
+        ctk.CTkLabel(tile, text="", image=self.ico(icon, 22, color)).place(relx=.5, rely=.5, anchor="center")
+        ctk.CTkLabel(f, text=label.upper(), text_color=MUTED, font=(FONT, 9, "bold"), anchor="w").grid(row=0, column=1, sticky="sw")
+        ctk.CTkLabel(f, text=value, text_color=color, font=(FONT, 17, "bold"), anchor="w").grid(row=1, column=1, sticky="nw")
+        self.add_hover(f)
+        return f
+
+    def kpi_row(self, row):
+        frame = ctk.CTkFrame(self.body, fg_color="transparent")
+        frame.grid(row=row, column=0, sticky="ew", pady=(0, 6))
+        return frame
+
+    # ------------------------------------------------------------------
+    # Ingresos / Obligaciones
+    # ------------------------------------------------------------------
     def show_records(self, kind):
         is_income = kind == "income"
         title = "Ingresos" if is_income else "Obligaciones"
         accent = GREEN if is_income else RED
-        self.section_title(title, "Administra tus movimientos con el mismo sistema visual del inicio. Los cambios recurrentes se aplican desde el siguiente mes.")
+        accent_dark = GREEN_DARK if is_income else RED_DARK
+        self.section_title(title, "Administra tus movimientos. Los cambios recurrentes se aplican desde el siguiente mes.")
 
-        toolbar = ctk.CTkFrame(self.body, fg_color=PANEL, border_width=1, border_color=BORDER, corner_radius=14, height=66)
-        toolbar.grid(row=1, column=0, sticky="ew", pady=(0, 10))
-        toolbar.grid_propagate(False)
-        ctk.CTkButton(toolbar, text="＋  Agregar " + ("ingreso" if is_income else "obligación"), height=38, fg_color=RED, hover_color=RED_2, command=lambda: self.open_entry(kind)).pack(side="left", padx=14, pady=13)
         data = db.get_month_data(self.current_month)
         total = data["income"] if is_income else data["obligations"]
-        ctk.CTkLabel(toolbar, text=f"TOTAL DEL MES  {money(total)}", text_color=accent, font=("Segoe UI", 12, "bold")).pack(side="right", padx=18)
+        first_total = data["fixed_total"] if is_income else data["rec_total"]
+        second_total = data["extra_total"] if is_income else data["one_total"]
+        first_name = "Fijos mensuales" if is_income else "Recurrentes"
+        second_name = "Adicionales" if is_income else "Puntuales"
+
+        kpis = self.kpi_row(1)
+        self.kpi_tile(kpis, 0, "coins" if is_income else "wallet", "Total del mes", money(total), accent, accent_dark)
+        self.kpi_tile(kpis, 1, "clock", first_name, money(first_total), TEXT, "#172331")
+        self.kpi_tile(kpis, 2, "bolt", second_name, money(second_total), TEXT, "#172331")
+
+        # barra de composición
+        comp = ctk.CTkFrame(self.body, fg_color=PANEL, border_width=1, border_color=BORDER, corner_radius=14, height=74)
+        comp.grid(row=2, column=0, sticky="ew", pady=(2, 8))
+        comp.grid_propagate(False)
+        comp.grid_columnconfigure(0, weight=1)
+        share = first_total / total if total else 0
+        ctk.CTkLabel(comp, text="COMPOSICIÓN DEL MES", text_color=MUTED, font=(FONT, 9, "bold")).grid(row=0, column=0, sticky="w", padx=18, pady=(12, 0))
+        ctk.CTkLabel(
+            comp, text=(f"{first_name} {share * 100:.0f}%  ·  {second_name} {(1 - share) * 100:.0f}%" if total else "Sin movimientos"),
+            text_color=TEXT, font=(FONT, 11, "bold")
+        ).grid(row=0, column=1, sticky="e", padx=18, pady=(12, 0))
+        bar = ctk.CTkProgressBar(comp, height=10, progress_color=accent, fg_color="#1B2735")
+        bar.grid(row=1, column=0, columnspan=2, sticky="ew", padx=18, pady=(8, 14))
+        self.animate_bar(bar, share if total else 0)
+
+        add_btn = ctk.CTkButton(
+            self.body, text="＋  Agregar " + ("ingreso" if is_income else "obligación"), height=42, width=220,
+            fg_color=RED, hover_color=RED_2, font=(FONT, 12, "bold"), command=lambda: self.open_entry(kind)
+        )
+        add_btn.grid(row=3, column=0, sticky="w", pady=(0, 4))
 
         sections = [
-            ("Fijos mensuales" if is_income else "Recurrentes", data["fixed"] if is_income else data["recurring"], True),
-            ("Adicionales" if is_income else "Puntuales", data["extras"] if is_income else data["oneoffs"], False),
+            (first_name, data["fixed"] if is_income else data["recurring"], True),
+            (second_name, data["extras"] if is_income else data["oneoffs"], False),
         ]
-        row = 2
+        row = 4
         for heading, records, recurrent in sections:
-            ctk.CTkLabel(self.body, text=heading.upper(), text_color=TEXT, font=("Segoe UI", 12, "bold")).grid(row=row, column=0, sticky="w", pady=(12, 7))
+            ctk.CTkLabel(self.body, text=heading.upper(), text_color=TEXT, font=(FONT, 12, "bold")).grid(row=row, column=0, sticky="w", pady=(14, 7))
             row += 1
             if not records:
                 empty = ctk.CTkFrame(self.body, fg_color=PANEL, border_width=1, border_color=BORDER_SOFT, corner_radius=12, height=62)
@@ -697,19 +811,25 @@ class TelaranaApp(ctk.CTk):
                 ctk.CTkLabel(empty, text="Sin registros en este periodo.", text_color=MUTED).place(relx=0.5, rely=0.5, anchor="center")
                 row += 1
             for rec in records:
-                card = ctk.CTkFrame(self.body, fg_color=PANEL, border_width=1, border_color=BORDER, corner_radius=12, height=64)
+                card = ctk.CTkFrame(self.body, fg_color=PANEL, border_width=1, border_color=BORDER, corner_radius=12, height=70)
                 card.grid(row=row, column=0, sticky="ew", pady=3)
                 card.grid_propagate(False)
-                card.grid_columnconfigure(0, weight=1)
-                card.grid_columnconfigure(1, minsize=150)
+                card.grid_columnconfigure(1, weight=1)
+                card.grid_columnconfigure(2, minsize=150)
                 card.grid_rowconfigure(0, weight=1)
-                ctk.CTkLabel(card, text=rec["concept"], text_color=TEXT, font=("Segoe UI", 12, "bold")).grid(row=0, column=0, sticky="w", padx=18)
-                ctk.CTkLabel(card, text=money(rec["amount"]), text_color=accent, font=("Segoe UI", 12, "bold"), anchor="e").grid(row=0, column=1, sticky="e", padx=15)
+                ctk.CTkFrame(card, width=4, height=34, corner_radius=2, fg_color=accent).grid(row=0, column=0, padx=(14, 0))
+                info = ctk.CTkFrame(card, fg_color="transparent")
+                info.grid(row=0, column=1, sticky="w", padx=14)
+                ctk.CTkLabel(info, text=rec["concept"], text_color=TEXT, font=(FONT, 12, "bold"), anchor="w").pack(anchor="w")
+                pct = rec["amount"] / total * 100 if total else 0
+                ctk.CTkLabel(info, text=f"{pct:.0f}% del total del mes", text_color=MUTED, font=(FONT, 9), anchor="w").pack(anchor="w")
+                ctk.CTkLabel(card, text=money(rec["amount"]), text_color=accent, font=(FONT, 13, "bold"), anchor="e").grid(row=0, column=2, sticky="e", padx=15)
                 if recurrent:
-                    ctk.CTkButton(card, text="Editar próximo mes", width=145, height=30, fg_color="#172331", hover_color="#223449", command=lambda k=kind, i=rec["id"], c=rec["concept"], a=rec["amount"]: self.edit_recurring_dialog(k, i, c, a)).grid(row=0, column=2, padx=4)
-                    ctk.CTkButton(card, text="Desactivar", width=90, height=30, fg_color=RED_DARK, hover_color="#51202A", command=lambda k=kind, i=rec["id"]: self.deactivate(k, i)).grid(row=0, column=3, padx=10)
+                    ctk.CTkButton(card, text="Editar próximo mes", width=145, height=30, fg_color="#172331", hover_color="#223449", command=lambda k=kind, i=rec["id"], c=rec["concept"], a=rec["amount"]: self.edit_recurring_dialog(k, i, c, a)).grid(row=0, column=3, padx=4)
+                    ctk.CTkButton(card, text="Desactivar", width=90, height=30, fg_color=RED_DARK, hover_color="#51202A", command=lambda k=kind, i=rec["id"]: self.deactivate(k, i)).grid(row=0, column=4, padx=10)
                 else:
-                    ctk.CTkButton(card, text="Eliminar", width=90, height=30, fg_color=RED_DARK, hover_color="#51202A", command=lambda k=kind, i=rec["id"]: self.delete_monthly(k, i)).grid(row=0, column=2, padx=10)
+                    ctk.CTkButton(card, text="Eliminar", width=90, height=30, fg_color=RED_DARK, hover_color="#51202A", command=lambda k=kind, i=rec["id"]: self.delete_monthly(k, i)).grid(row=0, column=3, padx=10)
+                self.add_hover(card)
                 row += 1
 
     def open_entry(self, kind):
@@ -804,6 +924,28 @@ class TelaranaApp(ctk.CTk):
     def show_history(self):
         self.section_title("Historial", "Consulta la evolución de tus ingresos, obligaciones y resultado mensual.")
         rows = db.history(24)
+        recent = rows[-12:]
+
+        # gráfica de los últimos 12 meses
+        chart = ctk.CTkFrame(self.body, fg_color=PANEL, border_width=1, border_color=BORDER, corner_radius=16)
+        chart.grid(row=1, column=0, sticky="ew", pady=(0, 10))
+        chart.grid_columnconfigure(0, weight=1)
+        ctk.CTkLabel(chart, text="ÚLTIMOS 12 MESES", text_color=MUTED, font=(FONT, 9, "bold")).grid(row=0, column=0, sticky="w", padx=18, pady=(14, 0))
+        legend = ctk.CTkFrame(chart, fg_color="transparent")
+        legend.grid(row=0, column=1, sticky="e", padx=18, pady=(14, 0))
+        for color, text in ((GREEN, "Ingresos"), (RED, "Obligaciones")):
+            ctk.CTkFrame(legend, width=10, height=10, corner_radius=5, fg_color=color).pack(side="left", padx=(10, 5))
+            ctk.CTkLabel(legend, text=text, text_color=MUTED, font=(FONT, 10)).pack(side="left")
+        try:
+            labels = [MONTHS_ABBR[int(m.split("-")[1]) - 1] for m, *_ in recent]
+            pil = visuals.render_history_chart(recent, labels, size=(900, 190), bg=PANEL)
+            img = ctk.CTkImage(light_image=pil, dark_image=pil, size=(900, 190))
+            self._image_refs.append(img)
+            ctk.CTkLabel(chart, text="", image=img).grid(row=1, column=0, columnspan=2, padx=14, pady=(6, 14))
+        except Exception:
+            pass
+        self.add_hover(chart, hover=BORDER, bg_hover=PANEL)
+
         cols = {1: 190, 2: 190, 3: 150}
 
         def align(frame):
@@ -812,83 +954,162 @@ class TelaranaApp(ctk.CTk):
                 frame.grid_columnconfigure(c, minsize=w)
 
         head = ctk.CTkFrame(self.body, fg_color="transparent", height=26)
-        head.grid(row=1, column=0, sticky="ew", pady=(0, 2))
+        head.grid(row=2, column=0, sticky="ew", pady=(0, 2))
         align(head)
         for c, t in ((0, "MES"), (1, "INGRESOS"), (2, "OBLIGACIONES"), (3, "RESULTADO")):
-            ctk.CTkLabel(head, text=t, text_color=DIM, font=("Segoe UI", 9, "bold"), anchor="w" if c == 0 else "e").grid(
+            ctk.CTkLabel(head, text=t, text_color=DIM, font=(FONT, 9, "bold"), anchor="w" if c == 0 else "e").grid(
                 row=0, column=c, sticky="w" if c == 0 else "e", padx=18 if c in (0, 3) else 12)
-        for i, (month, inc, obl, res) in enumerate(rows, start=2):
-            state = status(res) if inc or obl else "NEUTRO"
+
+        for i, (month, inc, obl, res) in enumerate(reversed(rows), start=3):
+            has = bool(inc or obl)
+            state = status(res) if has else "NEUTRO"
             accent = GREEN if state == "POSITIVO" else RED if state == "NEGATIVO" else BLUE
+            arrow = "▲ " if state == "POSITIVO" else "▼ " if state == "NEGATIVO" else "● "
             f = ctk.CTkFrame(self.body, fg_color=PANEL, border_width=1, border_color=BORDER, corner_radius=12, height=60)
             f.grid(row=i, column=0, sticky="ew", pady=3)
             f.grid_propagate(False)
             align(f)
             f.grid_rowconfigure(0, weight=1)
-            ctk.CTkLabel(f, text=month_label(month), text_color=TEXT, font=("Segoe UI", 12, "bold")).grid(row=0, column=0, padx=18, sticky="w")
-            ctk.CTkLabel(f, text=money(inc), text_color=GREEN, font=("Segoe UI", 11), anchor="e").grid(row=0, column=1, padx=12, sticky="e")
-            ctk.CTkLabel(f, text=money(obl), text_color=RED, font=("Segoe UI", 11), anchor="e").grid(row=0, column=2, padx=12, sticky="e")
-            ctk.CTkLabel(f, text=money(res), text_color=accent, font=("Segoe UI", 12, "bold"), anchor="e").grid(row=0, column=3, padx=18, sticky="e")
+            ctk.CTkLabel(f, text=month_label(month), text_color=TEXT if has else DIM, font=(FONT, 12, "bold")).grid(row=0, column=0, padx=18, sticky="w")
+            ctk.CTkLabel(f, text=money(inc) if has else "—", text_color=GREEN if has else DIM, font=(FONT, 11), anchor="e").grid(row=0, column=1, padx=12, sticky="e")
+            ctk.CTkLabel(f, text=money(obl) if has else "—", text_color=RED if has else DIM, font=(FONT, 11), anchor="e").grid(row=0, column=2, padx=12, sticky="e")
+            ctk.CTkLabel(f, text=(arrow + money(res)) if has else "—", text_color=accent if has else DIM, font=(FONT, 12, "bold"), anchor="e").grid(row=0, column=3, padx=18, sticky="e")
+            self.add_hover(f)
 
+    # ------------------------------------------------------------------
+    # Rachas
+    # ------------------------------------------------------------------
     def show_streaks(self):
         state, count = streak_info()
         pretty = {"POSITIVO": "Te sobró dinero", "NEGATIVO": "Te faltó dinero", "NEUTRO": "Estás al ras", "SIN DATOS": "Sin datos"}.get(state, state)
+        accent = RED if state == "NEGATIVO" else GREEN if state == "POSITIVO" else BLUE
         self.section_title("Rachas", "Mantén el mismo resultado financiero durante tres meses consecutivos para activar una racha.")
-        card = ctk.CTkFrame(self.body, fg_color=PANEL, border_width=1, border_color=BORDER, corner_radius=18, height=260)
+        card = ctk.CTkFrame(self.body, fg_color=PANEL, border_width=1, border_color=BORDER, corner_radius=18, height=270)
         card.grid(row=1, column=0, sticky="ew", pady=5)
         card.grid_propagate(False)
         card.grid_columnconfigure(1, weight=1)
-        art = self.load_art(STREAK_IMAGES.get(state, STREAK_IMAGES["NEUTRO"]), (190, 190), circle=True)
+        card.grid_rowconfigure(0, weight=1)
+        art = self.load_art(STREAK_IMAGES.get(state, STREAK_IMAGES["NEUTRO"]), (200, 200), circle=True)
         label = ctk.CTkLabel(card, text="", image=art)
         label._telarana_image = art
         self._image_refs.append(art)
-        label.grid(row=0, column=0, rowspan=4, padx=28, pady=25)
-        ctk.CTkLabel(card, text="RACHA ACTUAL", text_color=MUTED, font=("Segoe UI", 10, "bold")).grid(row=0, column=1, sticky="sw", pady=(30, 2))
-        ctk.CTkLabel(card, text=pretty, text_color=TEXT, font=("Segoe UI", 22, "bold")).grid(row=1, column=1, sticky="nw")
-        ctk.CTkLabel(card, text=f"{count} mes(es) consecutivos", text_color=RED if state == "NEGATIVO" else GREEN if state == "POSITIVO" else BLUE, font=("Segoe UI", 14, "bold")).grid(row=2, column=1, sticky="nw", pady=3)
-        ctk.CTkLabel(card, text=f"Meta: 3 meses · faltan {max(0, 3 - count)}", text_color=MUTED, font=("Segoe UI", 10)).grid(row=3, column=1, sticky="nw")
+        label.grid(row=0, column=0, padx=30, pady=25)
 
+        info = ctk.CTkFrame(card, fg_color="transparent")
+        info.grid(row=0, column=1, sticky="w", padx=(0, 30))
+        ctk.CTkLabel(info, text="RACHA ACTUAL", text_color=MUTED, font=(FONT, 10, "bold")).pack(anchor="w")
+        ctk.CTkLabel(info, text=pretty, text_color=TEXT, font=(FONT, 26, "bold")).pack(anchor="w", pady=(2, 8))
+
+        steps = ctk.CTkFrame(info, fg_color="transparent")
+        steps.pack(anchor="w", pady=(0, 10))
+        for n in range(3):
+            done = n < min(count, 3)
+            dot = ctk.CTkFrame(
+                steps, width=38, height=38, corner_radius=19,
+                fg_color=accent if done else "#121B26", border_width=2, border_color=accent if done else BORDER
+            )
+            dot.pack(side="left", padx=(0, 10))
+            dot.pack_propagate(False)
+            ctk.CTkLabel(dot, text="✓" if done else str(n + 1), text_color=BG if done else MUTED, font=(FONT, 14, "bold")).place(relx=.5, rely=.5, anchor="center")
+        bar = ctk.CTkProgressBar(info, width=320, height=10, progress_color=accent, fg_color="#1B2735")
+        bar.pack(anchor="w", pady=(0, 8))
+        self.animate_bar(bar, min(count, 3) / 3)
+        ctk.CTkLabel(
+            info, text=f"{count} mes(es) consecutivos  ·  " + ("¡Racha activa!" if count >= 3 else f"faltan {3 - count} para la racha"),
+            text_color=accent, font=(FONT, 12, "bold")
+        ).pack(anchor="w")
+        self.add_hover(card)
+
+        tiles = self.kpi_row(2)
+        self.kpi_tile(tiles, 0, "flame", "Meses seguidos", str(count), accent, "#172331")
+        self.kpi_tile(tiles, 1, "clock", "Días de racha", str(streak_days(count)), TEXT, "#172331")
+        self.kpi_tile(tiles, 2, "target", "Meta", "3 meses", TEXT, "#172331")
+
+    # ------------------------------------------------------------------
+    # Proyección
+    # ------------------------------------------------------------------
     def show_projection(self):
         self.section_title("Proyección", "Estimación basada en ingresos y obligaciones recurrentes del periodo seleccionado.")
         data = db.get_month_data(self.current_month)
-        cards = [("Ingresos estimados", money(data["income"]), GREEN), ("Obligaciones estimadas", money(data["obligations"]), RED), ("Resultado estimado", money(data["result"]), BLUE)]
-        grid = ctk.CTkFrame(self.body, fg_color="transparent")
-        grid.grid(row=1, column=0, sticky="ew")
-        for i, (title, value, color) in enumerate(cards):
-            grid.grid_columnconfigure(i, weight=1, uniform="metric")
-            self.metric_card(grid, 0, i, title, value, color)
-        self.panel(self.body, 2, 0, 1, "Lectura del periodo", "La proyección no crea ni modifica registros. Sirve para anticipar el resultado usando la información ya guardada.")
+        ratio = committed_ratio(data)
+        has = data["income"] > 0 or data["obligations"] > 0
+        result_color = GREEN if data["result"] > 0.005 else RED if data["result"] < -0.005 else BLUE
 
-    def metric_card(self, parent, row, col, title, value, color):
-        f = ctk.CTkFrame(parent, fg_color=PANEL, border_width=1, border_color=BORDER, corner_radius=15, height=125)
-        f.grid(row=row, column=col, sticky="ew", padx=5, pady=5)
-        f.grid_propagate(False)
-        inner = ctk.CTkFrame(f, fg_color="transparent")
-        inner.place(relx=0.5, rely=0.5, anchor="center")
-        ctk.CTkLabel(inner, text=title.upper(), text_color=MUTED, font=("Segoe UI", 9, "bold")).pack(pady=(0, 6))
-        ctk.CTkLabel(inner, text=value, text_color=color, font=("Segoe UI", 23, "bold")).pack()
+        tiles = self.kpi_row(1)
+        self.kpi_tile(tiles, 0, "coins", "Ingresos estimados", money(data["income"]), GREEN, GREEN_DARK)
+        self.kpi_tile(tiles, 1, "wallet", "Obligaciones estimadas", money(data["obligations"]), RED, RED_DARK)
+        self.kpi_tile(tiles, 2, "trend", "Resultado estimado", money(data["result"]), result_color, BLUE_DARK)
 
+        panel = ctk.CTkFrame(self.body, fg_color=PANEL, border_width=1, border_color=BORDER, corner_radius=16)
+        panel.grid(row=2, column=0, sticky="ew", pady=(6, 6))
+        panel.grid_columnconfigure(0, weight=1)
+        bar_color = RED if ratio >= 0.9 else "#FFB84D" if ratio >= 0.7 else GREEN
+        ctk.CTkLabel(panel, text="INGRESOS COMPROMETIDOS", text_color=MUTED, font=(FONT, 9, "bold")).grid(row=0, column=0, sticky="w", padx=20, pady=(16, 0))
+        ctk.CTkLabel(panel, text=f"{ratio * 100:.0f}%" if has else "—", text_color=bar_color if has else MUTED, font=(FONT, 22, "bold")).grid(row=0, column=1, sticky="e", padx=20, pady=(12, 0))
+        bar = ctk.CTkProgressBar(panel, height=12, progress_color=bar_color, fg_color="#1B2735")
+        bar.grid(row=1, column=0, columnspan=2, sticky="ew", padx=20, pady=(8, 8))
+        self.animate_bar(bar, ratio if has else 0)
+        found = alerts(data, ratio)
+        if not has:
+            note = "Aún no hay datos en este periodo. Agrega ingresos y obligaciones para ver la proyección."
+        elif found:
+            note = "⚠  " + found[0]
+        else:
+            note = "Todo en orden: tus obligaciones están por debajo del límite recomendado."
+        ctk.CTkLabel(panel, text=note, text_color=TEXT if has else MUTED, font=(FONT, 11), anchor="w", justify="left", wraplength=820).grid(
+            row=2, column=0, columnspan=2, sticky="w", padx=20, pady=(0, 6))
+        ctk.CTkLabel(panel, text="La proyección no crea ni modifica registros: sirve para anticipar el resultado con la información ya guardada.", text_color=DIM, font=(FONT, 9), anchor="w", wraplength=820, justify="left").grid(
+            row=3, column=0, columnspan=2, sticky="w", padx=20, pady=(0, 16))
+        self.add_hover(panel, hover=BORDER, bg_hover=PANEL)
+
+    # ------------------------------------------------------------------
+    # Objetivos de ahorro
+    # ------------------------------------------------------------------
     def show_goals(self):
         self.section_title("Objetivos de ahorro", "Crea metas y registra aportes sin alterar el resultado de ingresos menos obligaciones.")
-        ctk.CTkButton(self.body, text="＋  Crear objetivo", height=40, fg_color=RED, command=self.add_goal_dialog).grid(row=1, column=0, sticky="w", pady=5)
         goals = db.list_goals()
-        for i, g in enumerate(goals, start=2):
-            f = ctk.CTkFrame(self.body, fg_color=PANEL, border_width=1, border_color=BORDER, corner_radius=13, height=85)
+        saved_total = sum(g["saved"] for g in goals)
+        target_total = sum(g["target"] for g in goals)
+
+        tiles = self.kpi_row(1)
+        self.kpi_tile(tiles, 0, "target", "Objetivos activos", str(len(goals)), TEXT, "#172331")
+        self.kpi_tile(tiles, 1, "coins", "Total ahorrado", money(saved_total), GREEN, GREEN_DARK)
+        self.kpi_tile(tiles, 2, "trend", "Progreso general", f"{(saved_total / target_total * 100) if target_total else 0:.0f}%", BLUE, BLUE_DARK)
+
+        ctk.CTkButton(
+            self.body, text="＋  Crear objetivo", height=42, width=200, fg_color=RED, hover_color=RED_2,
+            font=(FONT, 12, "bold"), command=self.add_goal_dialog
+        ).grid(row=2, column=0, sticky="w", pady=(6, 6))
+
+        for i, g in enumerate(goals, start=3):
+            ratio = min(g["saved"] / g["target"], 1) if g["target"] else 0
+            done = ratio >= 1
+            color = GREEN if done else BLUE if ratio < 0.5 else "#FFB84D" if ratio < 0.8 else GREEN
+            f = ctk.CTkFrame(self.body, fg_color=PANEL, border_width=1, border_color=BORDER, corner_radius=14, height=92)
             f.grid(row=i, column=0, sticky="ew", pady=4)
             f.grid_propagate(False)
             f.grid_columnconfigure(0, weight=1)
+            f.grid_columnconfigure(2, minsize=60)
             f.grid_rowconfigure((0, 1), weight=1)
-            ctk.CTkLabel(f, text=g["name"], font=("Segoe UI", 12, "bold"), text_color=TEXT).grid(row=0, column=0, sticky="sw", padx=18, pady=(0, 0))
-            ctk.CTkLabel(f, text=f"{money(g['saved'])} de {money(g['target'])}", text_color=MUTED, font=("Segoe UI", 9)).grid(row=1, column=0, sticky="nw", padx=18)
-            bar = ctk.CTkProgressBar(f, width=220)
-            bar.set(min(g["saved"] / g["target"], 1))
+            ctk.CTkLabel(f, text=("✓  " if done else "") + g["name"], font=(FONT, 13, "bold"), text_color=GREEN if done else TEXT, anchor="w").grid(row=0, column=0, sticky="sw", padx=18)
+            ctk.CTkLabel(f, text=f"{money(g['saved'])} de {money(g['target'])}" + ("  ·  ¡Meta cumplida!" if done else f"  ·  faltan {money(g['target'] - g['saved'])}"), text_color=MUTED, font=(FONT, 10), anchor="w").grid(row=1, column=0, sticky="nw", padx=18)
+            bar = ctk.CTkProgressBar(f, width=230, height=10, progress_color=color, fg_color="#1B2735")
             bar.grid(row=0, column=1, rowspan=2, padx=12)
-            ctk.CTkButton(f, text="＋ Aportar", width=100, height=32, fg_color=RED, command=lambda gid=g["id"]: self.contribute_dialog(gid)).grid(row=0, column=2, rowspan=2, padx=15)
+            self.animate_bar(bar, ratio)
+            ctk.CTkLabel(f, text=f"{ratio * 100:.0f}%", text_color=color, font=(FONT, 14, "bold"), anchor="e").grid(row=0, column=2, rowspan=2, sticky="e", padx=(0, 8))
+            ctk.CTkButton(f, text="＋ Aportar", width=100, height=34, fg_color=RED, hover_color=RED_2, command=lambda gid=g["id"]: self.contribute_dialog(gid)).grid(row=0, column=3, rowspan=2, padx=(8, 6))
+            ctk.CTkButton(f, text="✕", width=34, height=34, fg_color="#172331", hover_color=RED_DARK, command=lambda gid=g["id"], nm=g["name"]: self.remove_goal(gid, nm)).grid(row=0, column=4, rowspan=2, padx=(0, 14))
+            self.add_hover(f)
         if not goals:
             empty = ctk.CTkFrame(self.body, fg_color=PANEL, border_width=1, border_color=BORDER_SOFT, corner_radius=14, height=110)
-            empty.grid(row=2, column=0, sticky="ew", pady=8)
+            empty.grid(row=3, column=0, sticky="ew", pady=8)
             empty.grid_propagate(False)
-            ctk.CTkLabel(empty, text="Todavía no tienes objetivos de ahorro.", text_color=MUTED, font=("Segoe UI", 12)).place(relx=0.5, rely=0.5, anchor="center")
+            ctk.CTkLabel(empty, text="Todavía no tienes objetivos de ahorro.\nCrea el primero con el botón de arriba.", text_color=MUTED, font=(FONT, 12), justify="center").place(relx=0.5, rely=0.5, anchor="center")
+
+    def remove_goal(self, gid, name):
+        if messagebox.askyesno("Eliminar objetivo", f"¿Eliminar el objetivo «{name}»?"):
+            db.delete_goal(gid)
+            self.render_page()
 
     def add_goal_dialog(self):
         win = ctk.CTkToplevel(self)
