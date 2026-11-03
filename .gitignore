@@ -7,3 +7,4 @@ data/ajustes.json
 build/
 dist/
 *.spec
+salida/
