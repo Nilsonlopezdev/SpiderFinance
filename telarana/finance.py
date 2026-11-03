@@ -6,7 +6,8 @@ from . import settings
 def money(value):
     symbol = settings.get("currency")
     sep = " " if symbol[-1:].isalpha() else ""
-    return symbol + sep + f"{value:,.0f}".replace(",", ".")
+    sign = "-" if round(value) < 0 else ""
+    return sign + symbol + sep + f"{abs(value):,.0f}".replace(",", ".")
 
 def status(result):
     if result > 0.005: return "POSITIVO"

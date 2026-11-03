@@ -282,7 +282,7 @@ def _art(path, diameter):
     return img
 
 
-def render_ring(art_path, accent, ratio, bg, size=320, glow=1.0):
+def render_ring(art_path, accent, ratio, bg, size=320, glow=1.0, caption=None):
     """Anillo HUD con la imagen DENTRO del círculo, sobre el color ``bg``.
 
     Todo (brillo, aro, progreso, imagen) se compone en una sola imagen opaca,
@@ -335,7 +335,24 @@ def render_ring(art_path, accent, ratio, bg, size=320, glow=1.0):
     base.paste(art, (off, off), mask)
     ImageDraw.Draw(base).ellipse((off, off, off + diameter - 1, off + diameter - 1), outline=_hex("#0A0F16"), width=int(n * .006))
 
+    if caption:
+        _draw_caption(base, n, caption, accent)
+
     return base.convert("RGB").resize((size, size), Image.Resampling.LANCZOS)
+
+
+def _draw_caption(base, n, caption, accent):
+    """Placa pegada al borde inferior del círculo: resultado del mes, monto y estado."""
+    small, big, status_text, color = caption
+    d = ImageDraw.Draw(base)
+    c = n / 2
+    cy = c + n * 0.385
+    pw, ph = n * 0.66, n * 0.20
+    box = (c - pw / 2, cy - ph / 2, c + pw / 2, cy + ph / 2)
+    d.rounded_rectangle(box, radius=n * 0.06, fill=_hex("#0B1119"), outline=_hex(color), width=max(int(n * 0.007), 2))
+    d.text((c, cy - n * 0.066), small, font=_font_regular(int(n * 0.028)), fill=_hex("#91A1B4"), anchor="mm")
+    d.text((c, cy - n * 0.004), big, font=_font_bold(int(n * 0.072)), fill=_hex(color), anchor="mm")
+    d.text((c, cy + n * 0.062), status_text, font=_font_regular(int(n * 0.033)), fill=_hex("#F3F7FC"), anchor="mm")
 
 
 def _font(size):
@@ -343,6 +360,24 @@ def _font(size):
         return ImageFont.load_default(size=size)
     except TypeError:  # Pillow antiguo sin tamaño configurable
         return ImageFont.load_default()
+
+
+def _font_bold(size):
+    for name in ("segoeuib.ttf", "arialbd.ttf", "DejaVuSans-Bold.ttf", "Arial Bold.ttf"):
+        try:
+            return ImageFont.truetype(name, size)
+        except OSError:
+            continue
+    return _font(size)
+
+
+def _font_regular(size):
+    for name in ("segoeui.ttf", "arial.ttf", "DejaVuSans.ttf"):
+        try:
+            return ImageFont.truetype(name, size)
+        except OSError:
+            continue
+    return _font(size)
 
 
 def render_history_chart(rows, labels, size=(940, 200), bg="#0E1620"):

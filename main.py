@@ -480,11 +480,22 @@ class TelaranaApp(ctk.CTk):
         except Exception:
             return None
 
-    def ring_image(self, state, accent, ratio, glow, size=330):
+    def ring_caption(self, state, result):
+        """Texto de la placa pegada al círculo: resultado del mes, monto y estado."""
+        title = "RESULTADO DEL MES"
+        if state == "POSITIVO":
+            return (title, "+" + money(result), "Te sobró dinero", GREEN)
+        if state == "NEGATIVO":
+            return (title, "-" + money(abs(result)), "Te faltó dinero", RED)
+        if state == "NEUTRO":
+            return (title, money(0), "Estás al ras", BLUE)
+        return (title, money(0), "Sin datos aún", BLUE)
+
+    def ring_image(self, state, accent, ratio, glow, size=330, caption=None):
         """Anillo + imagen de estado compuestos en una sola imagen (cacheada)."""
-        key = (state, accent, round(ratio, 2), glow)
+        key = (state, accent, round(ratio, 2), glow, caption)
         if key not in self._ring_cache:
-            pil = visuals.render_ring(STATE_IMAGES[state], accent, ratio, BG, size * 2, glow)
+            pil = visuals.render_ring(STATE_IMAGES[state], accent, ratio, BG, size * 2, glow, caption)
             self._ring_cache[key] = ctk.CTkImage(light_image=pil, dark_image=pil, size=(size, size))
         return self._ring_cache[key]
 
@@ -514,7 +525,7 @@ class TelaranaApp(ctk.CTk):
             [("Fijo mensual", money(data["fixed_total"])), ("Adicionales", money(data["extra_total"]))],
             has_data,
         )
-        self.status_center(hero, state, accent, ratio, days)
+        self.status_center(hero, state, accent, ratio, days, data["result"] if has_data else 0.0)
         self.summary_card(
             hero, 2, "Obligaciones totales", money(data["obligations"]), RED, "wallet",
             RED_DARK, "#8A2233", "Desglose de obligaciones",
@@ -607,13 +618,14 @@ class TelaranaApp(ctk.CTk):
             ctk.CTkLabel(line, text=label, font=(FONT, 13), text_color=TEXT).grid(row=0, column=1, sticky="w")
             ctk.CTkLabel(line, text=amount, font=(FONT, 13, "bold"), text_color=TEXT).grid(row=0, column=2, sticky="e")
 
-    def status_center(self, parent, state, accent, ratio, days):
+    def status_center(self, parent, state, accent, ratio, days, result=0.0):
         center = ctk.CTkFrame(parent, fg_color="transparent")
         center.grid(row=0, column=1, padx=22, sticky="n")
 
         # Una sola imagen contiene aro + progreso + foto circular.
         glow_levels = (1.0, 0.7, 0.4, 0.7)
-        self.ring_frames = [self.ring_image(state, accent, ratio, g) for g in glow_levels]
+        caption = self.ring_caption(state, result)
+        self.ring_frames = [self.ring_image(state, accent, ratio, g, caption=caption) for g in glow_levels]
         self._glow_step = 0
         self.ring_label = ctk.CTkLabel(
             center, text="", image=self.ring_frames[0], fg_color=BG, width=330, height=330
