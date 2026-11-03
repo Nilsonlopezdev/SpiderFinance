@@ -1,6 +1,6 @@
 import calendar
 import tkinter as tk
-from tkinter import messagebox, filedialog
+from tkinter import messagebox
 from datetime import date
 from pathlib import Path
 
@@ -9,6 +9,7 @@ from PIL import Image, ImageOps, ImageDraw
 
 from telarana import database as db
 from telarana import visuals
+from telarana import settings
 from telarana.finance import (
     money, status, committed_ratio, streak_info, streak_days, alerts
 )
@@ -61,6 +62,16 @@ STREAK_IMAGES = {
     "NEUTRO": ASSET_DIR / "racha_al_ras.png",
     "POSITIVO": ASSET_DIR / "racha_sobra_dinero.jpg",
     "SIN DATOS": ASSET_DIR / "racha_al_ras.png",
+}
+
+SECTION_ART = {
+    "Ingresos": ASSET_DIR / "seccion_ingresos.png",
+    "Obligaciones": ASSET_DIR / "seccion_obligaciones.png",
+    "Historial": ASSET_DIR / "seccion_historial.png",
+    "Proyección": ASSET_DIR / "seccion_proyeccion.png",
+    "Objetivos de ahorro": ASSET_DIR / "seccion_objetivos.png",
+    "Mini juego": ASSET_DIR / "seccion_juego.png",
+    "Configuración": ASSET_DIR / "seccion_ajustes.png",
 }
 
 MONTHS = [
@@ -162,6 +173,7 @@ class TelaranaApp(ctk.CTk):
         self.current_month = date.today().strftime("%Y-%m")
         self.active_page = "Inicio"
         self.sidebar_expanded = False
+        self.record_form = None
         self._image_refs = []
         self._ico_cache = {}
         self._ring_cache = {}
@@ -180,6 +192,8 @@ class TelaranaApp(ctk.CTk):
         self.content.grid_rowconfigure(0, weight=1)
         self.content.bind("<Configure>", self.fit_body)
 
+        if settings.get("sidebar_expanded"):
+            self.toggle_sidebar()
         self.render_page()
         self.after(400, self.animate_ui)
 
@@ -383,6 +397,7 @@ class TelaranaApp(ctk.CTk):
 
     def navigate(self, name):
         self.active_page = name
+        self.record_form = None
         for n, (button, icon) in self.nav.items():
             active = n == name
             button.configure(
@@ -663,10 +678,19 @@ class TelaranaApp(ctk.CTk):
     def section_title(self, title, subtitle=""):
         head = ctk.CTkFrame(self.body, fg_color="transparent")
         head.grid(row=0, column=0, sticky="ew", pady=(16, 12))
-        ctk.CTkLabel(head, text=title, font=("Segoe UI", 25, "bold"), text_color=TEXT).pack(anchor="w")
+        head.grid_columnconfigure(0, weight=1)
+        text = ctk.CTkFrame(head, fg_color="transparent")
+        text.grid(row=0, column=0, sticky="w")
+        ctk.CTkLabel(text, text=title, font=("Segoe UI", 25, "bold"), text_color=TEXT).pack(anchor="w")
         if subtitle:
-            ctk.CTkLabel(head, text=subtitle, font=("Segoe UI", 10), text_color=MUTED).pack(anchor="w", pady=(3, 0))
-        ctk.CTkFrame(head, height=2, fg_color=RED).pack(anchor="w", fill="x", pady=(11, 0))
+            ctk.CTkLabel(text, text=subtitle, font=("Segoe UI", 10), text_color=MUTED, wraplength=760, justify="left").pack(anchor="w", pady=(3, 0))
+        art_path = SECTION_ART.get(title)
+        if art_path:
+            art = self.load_art(art_path, (84, 84), circle=True)
+            if art:
+                self._image_refs.append(art)
+                ctk.CTkLabel(head, text="", image=art).grid(row=0, column=1, sticky="e", padx=(12, 4))
+        ctk.CTkFrame(head, height=2, fg_color=RED).grid(row=1, column=0, columnspan=2, sticky="ew", pady=(11, 0))
 
     # ------------------------------------------------------------------
     # Interactividad común: hover, barras animadas, tarjetas de resumen
@@ -714,6 +738,12 @@ class TelaranaApp(ctk.CTk):
     def animate_bar(self, bar, target, steps=20, delay=16):
         """La barra se llena con una animación suave al abrir la página."""
         target = max(0.0, min(float(target), 1.0))
+        if not settings.get("animations"):
+            try:
+                bar.set(target)
+            except tk.TclError:
+                pass
+            return
 
         def tick(i=1):
             try:
@@ -790,17 +820,23 @@ class TelaranaApp(ctk.CTk):
         bar.grid(row=1, column=0, columnspan=2, sticky="ew", padx=18, pady=(8, 14))
         self.animate_bar(bar, share if total else 0)
 
+        form = self.record_form if self.record_form and self.record_form["kind"] == kind else None
+        adding = bool(form and form["mode"] == "add")
         add_btn = ctk.CTkButton(
-            self.body, text="＋  Agregar " + ("ingreso" if is_income else "obligación"), height=42, width=220,
-            fg_color=RED, hover_color=RED_2, font=(FONT, 12, "bold"), command=lambda: self.open_entry(kind)
+            self.body,
+            text=("✕  Cerrar formulario" if adding else "＋  Agregar " + ("ingreso" if is_income else "obligación")),
+            height=42, width=220, fg_color="#172331" if adding else RED, hover_color="#223449" if adding else RED_2,
+            font=(FONT, 12, "bold"), command=lambda: self.open_entry(kind)
         )
         add_btn.grid(row=3, column=0, sticky="w", pady=(0, 4))
+        if form:
+            self.build_record_form(4, kind, accent, form)
 
         sections = [
             (first_name, data["fixed"] if is_income else data["recurring"], True),
             (second_name, data["extras"] if is_income else data["oneoffs"], False),
         ]
-        row = 4
+        row = 5
         for heading, records, recurrent in sections:
             ctk.CTkLabel(self.body, text=heading.upper(), text_color=TEXT, font=(FONT, 12, "bold")).grid(row=row, column=0, sticky="w", pady=(14, 7))
             row += 1
@@ -833,27 +869,63 @@ class TelaranaApp(ctk.CTk):
                 row += 1
 
     def open_entry(self, kind):
-        win = ctk.CTkToplevel(self)
-        win.title("Nuevo registro | TELARAÑA")
-        win.geometry("460x550")
-        win.configure(fg_color=BG)
-        win.grab_set()
+        """Abre (o cierra) el formulario de nuevo registro dentro de la misma página."""
+        if self.record_form and self.record_form["kind"] == kind and self.record_form["mode"] == "add":
+            self.record_form = None
+        else:
+            self.record_form = {"kind": kind, "mode": "add"}
+        self.render_page()
 
+    def build_record_form(self, row, kind, accent, form):
         is_income = kind == "income"
-        accent = GREEN if is_income else RED
-        ctk.CTkLabel(win, text="NUEVO " + ("INGRESO" if is_income else "OBLIGACIÓN"), font=("Segoe UI", 20, "bold"), text_color=TEXT).pack(pady=(26, 4))
-        ctk.CTkLabel(win, text="Completa los datos del movimiento.", text_color=MUTED, font=("Segoe UI", 10)).pack(pady=(0, 18))
-        concept = ctk.CTkEntry(win, placeholder_text="Concepto", width=350, height=40)
-        concept.pack(pady=7)
-        amount = ctk.CTkEntry(win, placeholder_text="Valor (ej. 850000)", width=350, height=40)
-        amount.pack(pady=7)
-        typ = ctk.StringVar(value="Recurrente" if not is_income else "Fijo mensual")
-        ctk.CTkOptionMenu(win, values=["Recurrente", "Puntual"] if not is_income else ["Fijo mensual", "Adicional"], variable=typ, width=350, height=40).pack(pady=7)
+        editing = form["mode"] == "edit"
+        panel = ctk.CTkFrame(self.body, fg_color=CARD, border_width=1, border_color=accent, corner_radius=14)
+        panel.grid(row=row, column=0, sticky="ew", pady=(4, 8))
+        panel.grid_columnconfigure((0, 1), weight=1, uniform="f")
+
+        title = (f"MODIFICAR DESDE {month_label(self.next_month(self.current_month)).upper()}" if editing
+                 else "NUEVO " + ("INGRESO" if is_income else "OBLIGACIÓN"))
+        ctk.CTkLabel(panel, text=title, font=(FONT, 13, "bold"), text_color=TEXT).grid(row=0, column=0, columnspan=2, sticky="w", padx=20, pady=(16, 2))
+        ctk.CTkLabel(
+            panel, text=("El cambio aplicará desde el siguiente mes." if editing else "Completa los datos del movimiento."),
+            font=(FONT, 10), text_color=MUTED
+        ).grid(row=1, column=0, columnspan=2, sticky="w", padx=20, pady=(0, 10))
+
+        concept = ctk.CTkEntry(panel, placeholder_text="Concepto", height=40)
+        concept.grid(row=2, column=0, sticky="ew", padx=(20, 8), pady=5)
+        amount = ctk.CTkEntry(panel, placeholder_text="Valor (ej. 850000)", height=40)
+        amount.grid(row=2, column=1, sticky="ew", padx=(8, 20), pady=5)
+
+        typ = ctk.StringVar(value="Fijo mensual" if is_income else "Recurrente")
         start = ctk.StringVar(value="Mes actual")
-        ctk.CTkOptionMenu(win, values=["Mes actual", "Mes siguiente"], variable=start, width=350, height=40).pack(pady=7)
-        duration = ctk.CTkEntry(win, placeholder_text="Duración en meses (opcional)", width=350, height=40)
-        duration.pack(pady=7)
-        ctk.CTkLabel(win, text="Deja la duración vacía si no tiene fecha de finalización.", text_color=MUTED, font=("Segoe UI", 9)).pack(pady=3)
+        duration = None
+        if editing:
+            concept.insert(0, form["concept"])
+            amount.insert(0, form["amount"])
+        else:
+            type_menu = ctk.CTkOptionMenu(panel, values=["Fijo mensual", "Adicional"] if is_income else ["Recurrente", "Puntual"], variable=typ, height=40)
+            type_menu.grid(row=3, column=0, sticky="ew", padx=(20, 8), pady=5)
+            start_menu = ctk.CTkOptionMenu(panel, values=["Mes actual", "Mes siguiente"], variable=start, height=40)
+            start_menu.grid(row=3, column=1, sticky="ew", padx=(8, 20), pady=5)
+            duration = ctk.CTkEntry(panel, placeholder_text="Duración en meses (opcional)", height=40)
+            duration.grid(row=4, column=0, columnspan=2, sticky="ew", padx=20, pady=5)
+
+            def on_type(*_):
+                recurrent = typ.get() in ("Recurrente", "Fijo mensual")
+                state = "normal" if recurrent else "disabled"
+                try:
+                    start_menu.configure(state=state)
+                    duration.configure(state=state)
+                except Exception:
+                    pass
+            typ.trace_add("write", on_type)
+
+        error = ctk.CTkLabel(panel, text="", text_color=RED, font=(FONT, 10), anchor="w")
+        error.grid(row=5, column=0, columnspan=2, sticky="w", padx=20, pady=(2, 0))
+
+        def cancel():
+            self.record_form = None
+            self.render_page()
 
         def save():
             try:
@@ -861,7 +933,9 @@ class TelaranaApp(ctk.CTk):
                 val = float(amount.get().replace(".", "").replace(",", "."))
                 if not name or val <= 0:
                     raise ValueError()
-                if typ.get() in ("Recurrente", "Fijo mensual"):
+                if editing:
+                    db.edit_recurring(kind, form["rid"], name, val, self.next_month(self.current_month))
+                elif typ.get() in ("Recurrente", "Fijo mensual"):
                     start_month = self.current_month if start.get() == "Mes actual" else self.next_month(self.current_month)
                     dur = duration.get().strip()
                     months = int(dur) if dur else None
@@ -870,43 +944,27 @@ class TelaranaApp(ctk.CTk):
                     db.add_recurring(kind, name, val, start_month, months)
                 else:
                     db.add_monthly(kind, self.current_month, name, val, date.today().isoformat())
-                win.destroy()
-                self.render_page()
             except Exception:
-                messagebox.showerror("Datos inválidos", "Escribe un concepto y un valor mayor que cero. La duración debe ser un número entero.")
+                error.configure(text="Escribe un concepto y un valor mayor que cero. La duración debe ser un número entero.")
+                return
+            self.record_form = None
+            self.render_page()
 
-        ctk.CTkButton(win, text="Guardar registro", fg_color=accent, hover_color=RED_2, width=350, height=42, command=save).pack(pady=22)
+        buttons = ctk.CTkFrame(panel, fg_color="transparent")
+        buttons.grid(row=6, column=0, columnspan=2, sticky="e", padx=20, pady=(8, 16))
+        ctk.CTkButton(buttons, text="Cancelar", width=110, height=38, fg_color="#172331", hover_color="#223449", command=cancel).pack(side="left", padx=(0, 8))
+        ctk.CTkButton(buttons, text="Guardar", width=140, height=38, fg_color=accent if is_income else RED, hover_color=RED_2, text_color=BG if is_income else TEXT, font=(FONT, 12, "bold"), command=save).pack(side="left")
+        concept.focus_set()
 
     def next_month(self, key):
         y, m = map(int, key.split("-"))
         return month_key(y + 1, 1) if m == 12 else month_key(y, m + 1)
 
     def edit_recurring_dialog(self, kind, rid, old_concept, old_amount):
-        win = ctk.CTkToplevel(self)
-        win.title("Modificar desde el siguiente mes")
-        win.geometry("430x300")
-        win.configure(fg_color=BG)
-        win.grab_set()
-        c = ctk.CTkEntry(win, width=330, height=40)
-        c.insert(0, old_concept)
-        c.pack(pady=(30, 10))
-        a = ctk.CTkEntry(win, width=330, height=40)
-        a.insert(0, str(old_amount))
-        a.pack(pady=10)
-        ctk.CTkLabel(win, text=f"El cambio aplicará desde {month_label(self.next_month(self.current_month))}.", text_color=MUTED).pack(pady=8)
-
-        def save():
-            try:
-                val = float(a.get().replace(".", "").replace(",", "."))
-                if not c.get().strip() or val <= 0:
-                    raise ValueError()
-                db.edit_recurring(kind, rid, c.get().strip(), val, self.next_month(self.current_month))
-                win.destroy()
-                self.render_page()
-            except Exception:
-                messagebox.showerror("Error", "Verifica el concepto y el valor.")
-
-        ctk.CTkButton(win, text="Guardar cambios", fg_color=RED, command=save).pack(pady=15)
+        """Edita un movimiento recurrente en el formulario de la misma página."""
+        shown = f"{old_amount:.0f}" if float(old_amount).is_integer() else str(old_amount)
+        self.record_form = {"kind": kind, "mode": "edit", "rid": rid, "concept": old_concept, "amount": shown}
+        self.render_page()
 
     def deactivate(self, kind, rid):
         if messagebox.askyesno("Desactivar", "Se desactivará desde el siguiente mes. ¿Continuar?"):
@@ -1043,7 +1101,8 @@ class TelaranaApp(ctk.CTk):
         panel = ctk.CTkFrame(self.body, fg_color=PANEL, border_width=1, border_color=BORDER, corner_radius=16)
         panel.grid(row=2, column=0, sticky="ew", pady=(6, 6))
         panel.grid_columnconfigure(0, weight=1)
-        bar_color = RED if ratio >= 0.9 else "#FFB84D" if ratio >= 0.7 else GREEN
+        limit = settings.get("alert_threshold") / 100
+        bar_color = RED if ratio >= limit else "#FFB84D" if ratio >= limit - 0.2 else GREEN
         ctk.CTkLabel(panel, text="INGRESOS COMPROMETIDOS", text_color=MUTED, font=(FONT, 9, "bold")).grid(row=0, column=0, sticky="w", padx=20, pady=(16, 0))
         ctk.CTkLabel(panel, text=f"{ratio * 100:.0f}%" if has else "—", text_color=bar_color if has else MUTED, font=(FONT, 22, "bold")).grid(row=0, column=1, sticky="e", padx=20, pady=(12, 0))
         bar = ctk.CTkProgressBar(panel, height=12, progress_color=bar_color, fg_color="#1B2735")
@@ -1178,27 +1237,91 @@ class TelaranaApp(ctk.CTk):
         ctk.CTkButton(box, text="Comprobar", fg_color=RED, command=check).pack(side="left", padx=8)
 
     def show_settings(self):
-        self.section_title("Configuración", "Herramientas locales de mantenimiento. Tus datos siguen guardados en la base local del proyecto.")
-        card = ctk.CTkFrame(self.body, fg_color=PANEL, border_width=1, border_color=BORDER, corner_radius=16, height=220)
-        card.grid(row=1, column=0, sticky="ew", pady=6)
-        card.grid_propagate(False)
-        ctk.CTkLabel(card, text="COPIA DE SEGURIDAD", text_color=TEXT, font=("Segoe UI", 14, "bold")).pack(anchor="w", padx=22, pady=(20, 6))
-        ctk.CTkLabel(card, text="Guarda una copia de tu base SQLite en la ubicación que tú elijas.", text_color=MUTED, font=("Segoe UI", 10)).pack(anchor="w", padx=22, pady=(0, 12))
-        ctk.CTkButton(card, text="▣  Crear copia de seguridad", height=42, width=270, fg_color=RED, hover_color=RED_2, command=self.backup).pack(anchor="w", padx=22, pady=6)
-        ctk.CTkLabel(card, text=f"Base de datos local: {db.DB_PATH}", text_color=DIM, font=("Segoe UI", 9), wraplength=900).pack(anchor="w", padx=22, pady=(10, 0))
+        self.section_title("Configuración", "Personaliza la aplicación. Los cambios se aplican al instante y se guardan automáticamente.")
 
-    def backup(self):
-        path = filedialog.asksaveasfilename(
-            defaultextension=".db",
-            filetypes=[("Base SQLite", "*.db")],
-            initialfile="respaldo_telarana.db"
-        )
-        if path:
-            try:
-                db.backup_database(path)
-                messagebox.showinfo("Copia creada", "La copia de seguridad se creó correctamente.")
-            except Exception as e:
-                messagebox.showerror("Error", str(e))
+        def card(row, title, subtitle):
+            f = ctk.CTkFrame(self.body, fg_color=PANEL, border_width=1, border_color=BORDER, corner_radius=16)
+            f.grid(row=row, column=0, sticky="ew", pady=6)
+            f.grid_columnconfigure(0, weight=1)
+            ctk.CTkLabel(f, text=title.upper(), text_color=TEXT, font=(FONT, 12, "bold")).grid(row=0, column=0, columnspan=2, sticky="w", padx=22, pady=(18, 2))
+            ctk.CTkLabel(f, text=subtitle, text_color=MUTED, font=(FONT, 10), anchor="w", justify="left", wraplength=640).grid(row=1, column=0, columnspan=2, sticky="w", padx=22, pady=(0, 10))
+            self.add_hover(f)
+            return f
+
+        def option_row(parent, row, label, hint, widget_factory):
+            ctk.CTkFrame(parent, height=1, fg_color=BORDER_SOFT).grid(row=row * 2, column=0, columnspan=2, sticky="ew", padx=22)
+            text = ctk.CTkFrame(parent, fg_color="transparent")
+            text.grid(row=row * 2 + 1, column=0, sticky="w", padx=22, pady=12)
+            ctk.CTkLabel(text, text=label, text_color=TEXT, font=(FONT, 12, "bold"), anchor="w").pack(anchor="w")
+            ctk.CTkLabel(text, text=hint, text_color=MUTED, font=(FONT, 9), anchor="w").pack(anchor="w")
+            widget = widget_factory(parent)
+            widget.grid(row=row * 2 + 1, column=1, sticky="e", padx=22)
+            return widget
+
+        # --- Alertas ---------------------------------------------------------
+        alerts_card = card(1, "Alertas", "Define cuándo la aplicación te avisa que tus obligaciones consumen demasiados ingresos.")
+        threshold_label = {}
+
+        def make_slider(parent):
+            box = ctk.CTkFrame(parent, fg_color="transparent")
+            value = ctk.CTkLabel(box, text=f"{settings.get('alert_threshold')}%", text_color=RED, font=(FONT, 14, "bold"), width=52)
+            threshold_label["w"] = value
+
+            def changed(v):
+                v = int(round(float(v) / 5) * 5)
+                value.configure(text=f"{v}%")
+                settings.set("alert_threshold", v)
+
+            slider = ctk.CTkSlider(box, from_=50, to=100, number_of_steps=10, width=220, progress_color=RED, button_color=RED, button_hover_color=RED_2, command=changed)
+            slider.set(settings.get("alert_threshold"))
+            slider.pack(side="left", padx=(0, 10))
+            value.pack(side="left")
+            return box
+
+        option_row(alerts_card, 1, "Umbral de alerta", "Se avisa cuando las obligaciones alcanzan este porcentaje de tus ingresos.", make_slider)
+        ctk.CTkFrame(alerts_card, height=10, fg_color="transparent").grid(row=4, column=0)
+
+        # --- Formato ---------------------------------------------------------
+        fmt = card(2, "Formato", "Cómo se muestran los valores de dinero en toda la aplicación.")
+
+        def make_currency(parent):
+            def changed(value):
+                settings.set("currency", value)
+                self.render_page()
+            menu = ctk.CTkOptionMenu(parent, values=settings.CURRENCIES, width=130, height=36, command=changed)
+            menu.set(settings.get("currency"))
+            return menu
+
+        option_row(fmt, 1, "Símbolo de moneda", f"Ejemplo: {money(1250000)}", make_currency)
+        ctk.CTkFrame(fmt, height=10, fg_color="transparent").grid(row=4, column=0)
+
+        # --- Comportamiento --------------------------------------------------
+        behavior = card(3, "Comportamiento", "Preferencias de la interfaz.")
+
+        def make_switch(key, after=None):
+            def factory(parent):
+                var = ctk.BooleanVar(value=bool(settings.get(key)))
+
+                def changed():
+                    settings.set(key, bool(var.get()))
+                    if after:
+                        after()
+                sw = ctk.CTkSwitch(parent, text="", variable=var, onvalue=True, offvalue=False, progress_color=RED, command=changed, width=48)
+                return sw
+            return factory
+
+        option_row(behavior, 1, "Animaciones", "Anillo de estado que respira y barras de progreso que se llenan.", make_switch("animations"))
+        option_row(behavior, 2, "Barra lateral abierta al iniciar", "Muestra los nombres de las secciones cada vez que abres la aplicación.", make_switch("sidebar_expanded"))
+        ctk.CTkFrame(behavior, height=10, fg_color="transparent").grid(row=6, column=0)
+
+        # --- Restablecer -----------------------------------------------------
+        def restore():
+            if messagebox.askyesno("Restablecer ajustes", "¿Volver todos los ajustes a sus valores originales? Tus ingresos, obligaciones y objetivos no se modifican."):
+                settings.reset()
+                self.render_page()
+
+        ctk.CTkButton(self.body, text="Restablecer ajustes", height=40, width=200, fg_color="#172331", hover_color=RED_DARK, command=restore).grid(row=4, column=0, sticky="w", pady=(8, 4))
+        ctk.CTkLabel(self.body, text=f"Base de datos local: {db.DB_PATH}", text_color=DIM, font=(FONT, 9), wraplength=900, anchor="w", justify="left").grid(row=5, column=0, sticky="w", pady=(6, 14))
 
     def show_alerts(self):
         data = db.get_month_data(self.current_month)
@@ -1220,7 +1343,7 @@ class TelaranaApp(ctk.CTk):
     # ------------------------------------------------------------------
     def animate_ui(self):
         label = self.ring_label
-        if label is not None and self.ring_frames:
+        if label is not None and self.ring_frames and settings.get("animations"):
             try:
                 if label.winfo_exists():
                     self._glow_step = (self._glow_step + 1) % len(self.ring_frames)

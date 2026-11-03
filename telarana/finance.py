@@ -1,9 +1,12 @@
 from datetime import date
 
 from .database import get_month_data, history
+from . import settings
 
 def money(value):
-    return "$" + f"{value:,.0f}".replace(",", ".")
+    symbol = settings.get("currency")
+    sep = " " if symbol[-1:].isalpha() else ""
+    return symbol + sep + f"{value:,.0f}".replace(",", ".")
 
 def status(result):
     if result > 0.005: return "POSITIVO"
@@ -52,6 +55,6 @@ def alerts(data, ratio):
     found = []
     if data["result"] < -0.005:
         found.append("Tus obligaciones superan tus ingresos en este periodo.")
-    elif data["income"] > 0 and ratio >= 0.9:
+    elif data["income"] > 0 and ratio >= settings.get("alert_threshold") / 100:
         found.append(f"Tus obligaciones ya usan el {ratio * 100:.0f}% de tus ingresos.")
     return found
