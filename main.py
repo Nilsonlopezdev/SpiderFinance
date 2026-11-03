@@ -1,4 +1,5 @@
 import calendar
+import sys
 import tkinter as tk
 from tkinter import messagebox
 from datetime import date
@@ -10,6 +11,7 @@ from PIL import Image, ImageOps, ImageDraw
 from telarana import database as db
 from telarana import visuals
 from telarana import settings
+from telarana import __version__
 from telarana.finance import (
     money, status, committed_ratio, streak_info, streak_days, alerts
 )
@@ -50,7 +52,8 @@ CONTENT_MAX = 980  # ancho máximo del contenido en las páginas internas
 SIDE_COMPACT = 78
 SIDE_EXPANDED = 236
 
-ASSET_DIR = Path(__file__).resolve().parent / "assets"
+BASE_DIR = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
+ASSET_DIR = BASE_DIR / "assets"
 STATE_IMAGES = {
     "NEGATIVO": ASSET_DIR / "estado_falta_dinero.png",
     "NEUTRO": ASSET_DIR / "estado_al_ras.png",
@@ -166,6 +169,10 @@ class TelaranaApp(ctk.CTk):
         db.init_db()
 
         self.title("TELARAÑA | No Hay Plata")
+        try:
+            self.iconbitmap(str(ASSET_DIR / "telarana.ico"))
+        except Exception:
+            pass
         self.geometry("1500x920")
         self.minsize(1180, 740)
         self.configure(fg_color=BG)
@@ -174,6 +181,7 @@ class TelaranaApp(ctk.CTk):
         self.active_page = "Inicio"
         self.sidebar_expanded = False
         self.record_form = None
+        self.goal_form = None
         self._image_refs = []
         self._ico_cache = {}
         self._ring_cache = {}
@@ -398,6 +406,7 @@ class TelaranaApp(ctk.CTk):
     def navigate(self, name):
         self.active_page = name
         self.record_form = None
+        self.goal_form = None
         for n, (button, icon) in self.nav.items():
             active = n == name
             button.configure(
@@ -1135,17 +1144,28 @@ class TelaranaApp(ctk.CTk):
         self.kpi_tile(tiles, 1, "coins", "Total ahorrado", money(saved_total), GREEN, GREEN_DARK)
         self.kpi_tile(tiles, 2, "trend", "Progreso general", f"{(saved_total / target_total * 100) if target_total else 0:.0f}%", BLUE, BLUE_DARK)
 
+        form = self.goal_form
+        creating = bool(form and form["mode"] == "new")
         ctk.CTkButton(
-            self.body, text="＋  Crear objetivo", height=42, width=200, fg_color=RED, hover_color=RED_2,
+            self.body, text="✕  Cerrar formulario" if creating else "＋  Crear objetivo", height=42, width=200,
+            fg_color="#172331" if creating else RED, hover_color="#223449" if creating else RED_2,
             font=(FONT, 12, "bold"), command=self.add_goal_dialog
         ).grid(row=2, column=0, sticky="w", pady=(6, 6))
 
-        for i, g in enumerate(goals, start=3):
+        row = 3
+        if creating:
+            self.goal_panel(
+                row, "NUEVO OBJETIVO", "Ponle un nombre y define cuánto quieres ahorrar.",
+                ["Nombre del objetivo", "Meta en pesos (ej. 2000000)"], "Crear objetivo", self.save_new_goal
+            )
+            row += 1
+
+        for g in goals:
             ratio = min(g["saved"] / g["target"], 1) if g["target"] else 0
             done = ratio >= 1
             color = GREEN if done else BLUE if ratio < 0.5 else "#FFB84D" if ratio < 0.8 else GREEN
             f = ctk.CTkFrame(self.body, fg_color=PANEL, border_width=1, border_color=BORDER, corner_radius=14, height=92)
-            f.grid(row=i, column=0, sticky="ew", pady=4)
+            f.grid(row=row, column=0, sticky="ew", pady=4)
             f.grid_propagate(False)
             f.grid_columnconfigure(0, weight=1)
             f.grid_columnconfigure(2, minsize=60)
@@ -1157,64 +1177,105 @@ class TelaranaApp(ctk.CTk):
             self.animate_bar(bar, ratio)
             ctk.CTkLabel(f, text=f"{ratio * 100:.0f}%", text_color=color, font=(FONT, 14, "bold"), anchor="e").grid(row=0, column=2, rowspan=2, sticky="e", padx=(0, 8))
             ctk.CTkButton(f, text="＋ Aportar", width=100, height=34, fg_color=RED, hover_color=RED_2, command=lambda gid=g["id"]: self.contribute_dialog(gid)).grid(row=0, column=3, rowspan=2, padx=(8, 6))
-            ctk.CTkButton(f, text="✕", width=34, height=34, fg_color="#172331", hover_color=RED_DARK, command=lambda gid=g["id"], nm=g["name"]: self.remove_goal(gid, nm)).grid(row=0, column=4, rowspan=2, padx=(0, 14))
+            ctk.CTkButton(f, text="✕", width=34, height=34, fg_color="#172331", hover_color=RED_DARK, command=lambda gid=g["id"]: self.remove_goal(gid, "")).grid(row=0, column=4, rowspan=2, padx=(0, 14))
             self.add_hover(f)
+            row += 1
+
+            if form and form.get("gid") == g["id"]:
+                if form["mode"] == "contribute":
+                    self.goal_panel(
+                        row, f"APORTAR A «{g['name'].upper()}»", f"Faltan {money(max(g['target'] - g['saved'], 0))} para completar la meta.",
+                        ["Valor del aporte"], "Guardar aporte", lambda vals, gid=g["id"]: self.save_contribution(gid, vals)
+                    )
+                else:
+                    self.goal_panel(
+                        row, f"ELIMINAR «{g['name'].upper()}»", "El objetivo dejará de mostrarse. Tus ingresos y obligaciones no cambian.",
+                        [], "Sí, eliminar", lambda vals, gid=g["id"]: self.confirm_remove_goal(gid), danger=True
+                    )
+                row += 1
+
         if not goals:
             empty = ctk.CTkFrame(self.body, fg_color=PANEL, border_width=1, border_color=BORDER_SOFT, corner_radius=14, height=110)
-            empty.grid(row=3, column=0, sticky="ew", pady=8)
+            empty.grid(row=row, column=0, sticky="ew", pady=8)
             empty.grid_propagate(False)
             ctk.CTkLabel(empty, text="Todavía no tienes objetivos de ahorro.\nCrea el primero con el botón de arriba.", text_color=MUTED, font=(FONT, 12), justify="center").place(relx=0.5, rely=0.5, anchor="center")
 
-    def remove_goal(self, gid, name):
-        if messagebox.askyesno("Eliminar objetivo", f"¿Eliminar el objetivo «{name}»?"):
-            db.delete_goal(gid)
+    # --- formularios dentro de la página (sin ventanas extra) ---------------
+    @staticmethod
+    def parse_amount(text):
+        return float(text.replace(".", "").replace(",", "."))
+
+    def goal_panel(self, row, title, hint, placeholders, save_text, on_save, danger=False):
+        panel = ctk.CTkFrame(self.body, fg_color=CARD, border_width=1, border_color=RED if danger else BLUE, corner_radius=14)
+        panel.grid(row=row, column=0, sticky="ew", pady=(0, 6))
+        panel.grid_columnconfigure(0, weight=1)
+        ctk.CTkLabel(panel, text=title, font=(FONT, 13, "bold"), text_color=TEXT, anchor="w").grid(row=0, column=0, sticky="w", padx=20, pady=(16, 2))
+        ctk.CTkLabel(panel, text=hint, font=(FONT, 10), text_color=MUTED, anchor="w").grid(row=1, column=0, sticky="w", padx=20, pady=(0, 8))
+        entries = []
+        for i, ph in enumerate(placeholders):
+            e = ctk.CTkEntry(panel, placeholder_text=ph, height=40)
+            e.grid(row=2 + i, column=0, sticky="ew", padx=20, pady=5)
+            entries.append(e)
+        error = ctk.CTkLabel(panel, text="", text_color=RED, font=(FONT, 10), anchor="w")
+        error.grid(row=10, column=0, sticky="w", padx=20)
+
+        def cancel():
+            self.goal_form = None
             self.render_page()
 
-    def add_goal_dialog(self):
-        win = ctk.CTkToplevel(self)
-        win.geometry("400x280")
-        win.title("Nuevo objetivo")
-        win.configure(fg_color=BG)
-        win.grab_set()
-        name = ctk.CTkEntry(win, placeholder_text="Nombre del objetivo", width=300, height=40)
-        name.pack(pady=(35, 12))
-        target = ctk.CTkEntry(win, placeholder_text="Meta en pesos", width=300, height=40)
-        target.pack(pady=12)
-
         def save():
-            try:
-                v = float(target.get().replace(".", "").replace(",", "."))
-                if not name.get().strip() or v <= 0:
-                    raise ValueError()
-                db.add_goal(name.get().strip(), v)
-                win.destroy()
-                self.render_page()
-            except Exception:
-                messagebox.showerror("Error", "Completa nombre y meta válida.")
+            message = on_save([e.get().strip() for e in entries])
+            if message:
+                error.configure(text=message)
 
-        ctk.CTkButton(win, text="Crear", fg_color=RED, command=save).pack(pady=15)
+        buttons = ctk.CTkFrame(panel, fg_color="transparent")
+        buttons.grid(row=11, column=0, sticky="e", padx=20, pady=(8, 16))
+        ctk.CTkButton(buttons, text="Cancelar", width=110, height=38, fg_color="#172331", hover_color="#223449", command=cancel).pack(side="left", padx=(0, 8))
+        ctk.CTkButton(buttons, text=save_text, width=150, height=38, fg_color=RED if danger else BLUE, hover_color=RED_2 if danger else "#5E92E8", text_color=TEXT if danger else BG, font=(FONT, 12, "bold"), command=save).pack(side="left")
+        if entries:
+            entries[0].focus_set()
+
+    def add_goal_dialog(self):
+        """Abre (o cierra) el formulario de nuevo objetivo dentro de la página."""
+        self.goal_form = None if (self.goal_form and self.goal_form["mode"] == "new") else {"mode": "new"}
+        self.render_page()
+
+    def save_new_goal(self, values):
+        try:
+            name, target = values[0], self.parse_amount(values[1])
+            if not name or target <= 0:
+                raise ValueError()
+        except Exception:
+            return "Escribe un nombre y una meta mayor que cero."
+        db.add_goal(name, target)
+        self.goal_form = None
+        self.render_page()
 
     def contribute_dialog(self, gid):
-        win = ctk.CTkToplevel(self)
-        win.geometry("360x210")
-        win.title("Aportar ahorro")
-        win.configure(fg_color=BG)
-        win.grab_set()
-        e = ctk.CTkEntry(win, placeholder_text="Valor del aporte", width=280, height=40)
-        e.pack(pady=30)
+        same = self.goal_form and self.goal_form["mode"] == "contribute" and self.goal_form["gid"] == gid
+        self.goal_form = None if same else {"mode": "contribute", "gid": gid}
+        self.render_page()
 
-        def save():
-            try:
-                v = float(e.get().replace(".", "").replace(",", "."))
-                if v <= 0:
-                    raise ValueError()
-                db.add_goal_contribution(gid, v)
-                win.destroy()
-                self.render_page()
-            except Exception:
-                messagebox.showerror("Error", "Escribe un valor mayor que cero.")
+    def save_contribution(self, gid, values):
+        try:
+            amount = self.parse_amount(values[0])
+            if amount <= 0:
+                raise ValueError()
+        except Exception:
+            return "Escribe un valor mayor que cero."
+        db.add_goal_contribution(gid, amount)
+        self.goal_form = None
+        self.render_page()
 
-        ctk.CTkButton(win, text="Guardar aporte", fg_color=RED, command=save).pack()
+    def remove_goal(self, gid, _name=""):
+        same = self.goal_form and self.goal_form["mode"] == "delete" and self.goal_form["gid"] == gid
+        self.goal_form = None if same else {"mode": "delete", "gid": gid}
+        self.render_page()
+
+    def confirm_remove_goal(self, gid):
+        db.delete_goal(gid)
+        self.goal_form = None
+        self.render_page()
 
     def show_game(self):
         self.section_title("Mini juego", "Un pequeño reto para poner a prueba tu criterio financiero.")
@@ -1321,7 +1382,8 @@ class TelaranaApp(ctk.CTk):
                 self.render_page()
 
         ctk.CTkButton(self.body, text="Restablecer ajustes", height=40, width=200, fg_color="#172331", hover_color=RED_DARK, command=restore).grid(row=4, column=0, sticky="w", pady=(8, 4))
-        ctk.CTkLabel(self.body, text=f"Base de datos local: {db.DB_PATH}", text_color=DIM, font=(FONT, 9), wraplength=900, anchor="w", justify="left").grid(row=5, column=0, sticky="w", pady=(6, 14))
+        ctk.CTkLabel(self.body, text=f"TELARAÑA v{__version__}", text_color=MUTED, font=(FONT, 10, "bold"), anchor="w").grid(row=5, column=0, sticky="w", pady=(10, 0))
+        ctk.CTkLabel(self.body, text=f"Base de datos local: {db.DB_PATH}", text_color=DIM, font=(FONT, 9), wraplength=900, anchor="w", justify="left").grid(row=6, column=0, sticky="w", pady=(4, 14))
 
     def show_alerts(self):
         data = db.get_month_data(self.current_month)

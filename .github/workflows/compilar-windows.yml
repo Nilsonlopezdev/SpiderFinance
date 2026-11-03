@@ -1,0 +1,44 @@
+name: Compilar TELARAÑA para Windows
+
+on:
+  push:
+    tags: ["v*"]        # al crear una versión (ej. v1.0.0) se publica en Releases
+  workflow_dispatch:     # también se puede lanzar a mano desde la pestaña Actions
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Instalar dependencias
+        run: pip install -r requirements.txt pyinstaller
+
+      - name: Compilar
+        run: >
+          pyinstaller --noconfirm --windowed --name TELARANA
+          --icon assets/telarana.ico
+          --add-data "assets;assets"
+          --collect-all customtkinter
+          main.py
+
+      - name: Comprimir
+        run: Compress-Archive -Path dist/TELARANA -DestinationPath TELARANA-Windows.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TELARANA-Windows
+          path: TELARANA-Windows.zip
+
+      - name: Publicar en Releases
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: TELARANA-Windows.zip

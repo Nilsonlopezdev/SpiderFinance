@@ -1,36 +1,43 @@
 # TELARAÑA — Finanzas personales
 
-Versión de escritorio con interfaz oscura, tecnológica y minimalista.
+Aplicación de escritorio (Windows) con interfaz oscura para llevar ingresos, obligaciones,
+historial, rachas, proyección y objetivos de ahorro. Todo se guarda en tu equipo.
 
-## Cambios de esta versión
+## Usar la aplicación (sin instalar Python)
 
-- Inicio rediseñado igual a la maqueta: cabecera con logo y selector de mes, tarjetas de ingresos y obligaciones a los lados, anillo central con la imagen de estado, racha en días, cuatro tarjetas inferiores clicables y panel reservado.
-- **Barra lateral corregida**: ahora es compacta (solo íconos, con globo de ayuda al pasar el cursor) y se expande con el botón « para mostrar los nombres. Íconos dibujados por la propia app, sin depender de símbolos de fuentes. Se eliminó la animación de borde que la refrescaba 12 veces por segundo.
-- **Imagen de estado corregida**: aro, progreso y foto circular se componen en una sola imagen, sin canvas superpuesto ni esquinas cuadradas. Se agregó `estado_sin_datos.png` (Spider-Man de esmoquin) para el estado "Sin datos" y se redujo el peso de `estado_falta_dinero.png` (2048 px → 800 px).
-- La racha ahora se muestra en días y se activa con 3 meses consecutivos con el mismo resultado.
-- Las alertas son reales: se avisa cuando las obligaciones superan los ingresos o usan el 90 % o más.
-- Se mantienen todas las funciones existentes y la base de datos local en `data/`.
+1. Ve a **Releases** en este repositorio y descarga `TELARANA-Windows.zip`.
+2. Descomprímelo y abre `TELARANA.exe`.
 
-## Ejecutar
+Tus datos se guardan en `%APPDATA%\TELARANA` (base de datos y ajustes), por lo que
+actualizar la aplicación no borra nada.
 
-En Windows:
+> Windows Defender o SmartScreen pueden advertir sobre programas sin firma digital.
+> Es una advertencia habitual en aplicaciones nuevas hechas con PyInstaller.
 
-1. Ejecuta `INICIAR_TELARANA.bat`.
-2. El lanzador crea `.venv` si no existe.
-3. Instala `requirements.txt`.
-4. Abre `main.py`.
+## Ejecutar desde el código
 
-También se puede ejecutar manualmente con el entorno virtual activado:
+Requiere Python 3.10 o superior.
 
-```text
+```
+py -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
 python main.py
 ```
 
-## Estructura
+En este modo los datos quedan en la carpeta `data/` del proyecto.
 
-- `main.py` — interfaz y navegación.
-- `telarana/database.py` — base SQLite y operaciones de datos.
-- `telarana/finance.py` — cálculos financieros.
-- `telarana/visuals.py` — íconos y anillo de estado (PIL).
-- `assets/` — imágenes de estados y rachas.
-- `data/` — base de datos local.
+## Publicar una nueva versión
+
+1. Sube el número en `telarana/__init__.py`.
+2. Crea y sube una etiqueta: `git tag v1.0.0 && git push origin v1.0.0`.
+3. GitHub compila la app en Windows (pestaña **Actions**) y adjunta el `.zip` a **Releases**.
+
+También puedes lanzar la compilación a mano desde **Actions → Compilar TELARAÑA para Windows → Run workflow**.
+
+## Funciones
+
+- Inicio con anillo de estado, racha en días, alertas y accesos rápidos.
+- Ingresos y obligaciones (recurrentes y puntuales), con formularios dentro de la página.
+- Historial con gráfica de 12 meses, Rachas, Proyección y Objetivos de ahorro.
+- Configuración: umbral de alerta, símbolo de moneda, animaciones y barra lateral.

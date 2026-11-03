@@ -1,11 +1,17 @@
+import os
+import sys
 from pathlib import Path
 import sqlite3
 import shutil
 from datetime import date
 
 ROOT = Path(__file__).resolve().parent.parent
-DATA_DIR = ROOT / "data"
-DATA_DIR.mkdir(exist_ok=True)
+if getattr(sys, "frozen", False):
+    # Aplicación instalada (.exe): los datos van a la carpeta del usuario, no junto al programa.
+    DATA_DIR = Path(os.environ.get("APPDATA") or Path.home()) / "TELARANA"
+else:
+    DATA_DIR = ROOT / "data"
+DATA_DIR.mkdir(parents=True, exist_ok=True)
 DB_PATH = DATA_DIR / "telarana.db"
 
 def connect():

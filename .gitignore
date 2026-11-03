@@ -3,3 +3,7 @@ __pycache__/
 *.pyc
 *.log
 data/ajustes.json
+
+build/
+dist/
+*.spec
