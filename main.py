@@ -20,7 +20,7 @@ ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("dark-blue")
 
 # -----------------------------------------------------------------------------
-# TELARAÑA - sistema visual
+# SpiderFinance - sistema visual
 # -----------------------------------------------------------------------------
 FONT = "Segoe UI"
 
@@ -162,15 +162,15 @@ class Tooltip:
 
 
 class TelaranaApp(ctk.CTk):
-    """TELARAÑA - aplicación de escritorio con diseño futurista unificado."""
+    """SpiderFinance - aplicación de escritorio con diseño futurista unificado."""
 
     def __init__(self):
         super().__init__()
         db.init_db()
 
-        self.title("TELARAÑA | No Hay Plata")
+        self.title("SpiderFinance | No Hay Plata")
         try:
-            self.iconbitmap(str(ASSET_DIR / "telarana.ico"))
+            self.iconbitmap(str(ASSET_DIR / "spiderfinance.ico"))
         except Exception:
             pass
         self.geometry("1500x920")
@@ -277,8 +277,13 @@ class TelaranaApp(ctk.CTk):
         # Logo + nombre
         logo = ctk.CTkFrame(self.header, fg_color="transparent")
         logo.grid(row=0, column=0, padx=(22, 0), sticky="w")
-        ctk.CTkLabel(logo, text="", image=self.ico("web", 52, RED)).grid(row=0, column=0, rowspan=2, padx=(0, 12))
-        ctk.CTkLabel(logo, text="TELARAÑA", font=(FONT, 19, "bold"), text_color=TEXT).grid(row=0, column=1, sticky="sw")
+        brand = self.load_art(ASSET_DIR / "logo_spiderfinance.png", (56, 56))
+        if brand:
+            self._image_refs.append(brand)
+            ctk.CTkLabel(logo, text="", image=brand).grid(row=0, column=0, rowspan=2, padx=(0, 12))
+        else:
+            ctk.CTkLabel(logo, text="", image=self.ico("web", 52, RED)).grid(row=0, column=0, rowspan=2, padx=(0, 12))
+        ctk.CTkLabel(logo, text="SpiderFinance", font=(FONT, 19, "bold"), text_color=TEXT).grid(row=0, column=1, sticky="sw")
         ctk.CTkLabel(logo, text="No Hay Plata", font=(FONT, 12), text_color=MUTED).grid(row=1, column=1, sticky="nw")
 
         # Selector de mes (píldora)
@@ -1388,7 +1393,7 @@ class TelaranaApp(ctk.CTk):
         ctk.CTkFrame(behavior, height=10, fg_color="transparent").grid(row=6, column=0)
 
         # --- Acceso directo --------------------------------------------------
-        shortcut = card(4, "Acceso directo", "Crea un icono de TELARAÑA en tu escritorio para abrir la aplicación con doble clic.")
+        shortcut = card(4, "Acceso directo", "Crea un icono de SpiderFinance en tu escritorio para abrir la aplicación con doble clic.")
         status_label = ctk.CTkLabel(shortcut, text="", text_color=MUTED, font=(FONT, 10), anchor="w", wraplength=520, justify="left")
 
         def make_shortcut_button(parent):
@@ -1408,11 +1413,11 @@ class TelaranaApp(ctk.CTk):
                 self.render_page()
 
         ctk.CTkButton(self.body, text="Restablecer ajustes", height=40, width=200, fg_color="#172331", hover_color=RED_DARK, command=restore).grid(row=5, column=0, sticky="w", pady=(8, 4))
-        ctk.CTkLabel(self.body, text=f"TELARAÑA v{__version__}", text_color=MUTED, font=(FONT, 10, "bold"), anchor="w").grid(row=6, column=0, sticky="w", pady=(10, 0))
+        ctk.CTkLabel(self.body, text=f"SpiderFinance v{__version__}", text_color=MUTED, font=(FONT, 10, "bold"), anchor="w").grid(row=6, column=0, sticky="w", pady=(10, 0))
         ctk.CTkLabel(self.body, text=f"Base de datos local: {db.DB_PATH}", text_color=DIM, font=(FONT, 9), wraplength=900, anchor="w", justify="left").grid(row=7, column=0, sticky="w", pady=(4, 14))
 
     def create_desktop_shortcut(self):
-        """Crea TELARAÑA.lnk en el escritorio (Windows). Devuelve (ok, mensaje)."""
+        """Crea SpiderFinance.lnk en el escritorio (Windows). Devuelve (ok, mensaje)."""
         if sys.platform != "win32":
             return False, "El acceso directo solo se puede crear en Windows."
         import os
@@ -1426,14 +1431,14 @@ class TelaranaApp(ctk.CTk):
                 target = str(pyw if pyw.exists() else exe)
                 args = f'"{BASE_DIR / "main.py"}"'
                 workdir = str(BASE_DIR)
-            env = dict(os.environ, TL_TARGET=target, TL_ARGS=args, TL_WORKDIR=workdir, TL_ICON=str(ASSET_DIR / "telarana.ico"))
+            env = dict(os.environ, TL_TARGET=target, TL_ARGS=args, TL_WORKDIR=workdir, TL_ICON=str(ASSET_DIR / "spiderfinance.ico"))
             script = (
                 "$d=[Environment]::GetFolderPath('Desktop');"
-                "$f=Join-Path $d ('TELARA'+[char]0xD1+'A.lnk');"
+                "$f=Join-Path $d 'SpiderFinance.lnk';"
                 "$s=(New-Object -ComObject WScript.Shell).CreateShortcut($f);"
                 "$s.TargetPath=$env:TL_TARGET;$s.Arguments=$env:TL_ARGS;"
                 "$s.WorkingDirectory=$env:TL_WORKDIR;$s.IconLocation=$env:TL_ICON;"
-                "$s.Description='TELARANA';$s.Save();Write-Output $f"
+                "$s.Description='SpiderFinance';$s.Save();Write-Output $f"
             )
             result = subprocess.run(
                 ["powershell", "-NoProfile", "-NonInteractive", "-Command", script],
@@ -1441,7 +1446,7 @@ class TelaranaApp(ctk.CTk):
             )
             if result.returncode != 0:
                 return False, "No se pudo crear el acceso directo. Créalo manualmente con clic derecho en el escritorio."
-            return True, "Listo: ya tienes el icono TELARAÑA en tu escritorio."
+            return True, "Listo: ya tienes el icono SpiderFinance en tu escritorio."
         except Exception:
             return False, "No se pudo crear el acceso directo. Créalo manualmente con clic derecho en el escritorio."
 
@@ -1449,7 +1454,7 @@ class TelaranaApp(ctk.CTk):
         data = db.get_month_data(self.current_month)
         found = alerts(data, committed_ratio(data))
         messagebox.showinfo(
-            "Alertas | TELARAÑA",
+            "Alertas | SpiderFinance",
             "\n\n".join(found) if found else "No hay alertas pendientes para el periodo seleccionado."
         )
 

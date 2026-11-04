@@ -1,4 +1,4 @@
-"""Recursos visuales de TELARAÑA dibujados con PIL (sin depender de fuentes).
+"""Recursos visuales de SpiderFinance dibujados con PIL (sin depender de fuentes).
 
 * ``render_icon``  -> íconos vectoriales suavizados (supersampling).
 * ``render_ring``  -> anillo de estado con la imagen recortada en círculo,

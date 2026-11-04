@@ -1,4 +1,4 @@
-"""Ajustes de usuario de TELARAÑA, guardados en data/ajustes.json."""
+"""Ajustes de usuario de SpiderFinance, guardados en data/ajustes.json."""
 import json
 
 from .database import DATA_DIR

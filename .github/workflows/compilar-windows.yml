@@ -1,4 +1,4 @@
-name: Compilar TELARAÑA para Windows
+name: Compilar SpiderFinance para Windows
 
 on:
   push:
@@ -23,32 +23,32 @@ jobs:
 
       - name: Compilar
         run: >
-          pyinstaller --noconfirm --windowed --name TELARANA
-          --icon assets/telarana.ico
+          pyinstaller --noconfirm --windowed --name SpiderFinance
+          --icon assets/spiderfinance.ico
           --add-data "assets;assets"
           --collect-all customtkinter
           main.py
 
       - name: Comprimir versión portable
-        run: Compress-Archive -Path dist/TELARANA -DestinationPath TELARANA-Portable.zip
+        run: Compress-Archive -Path dist/SpiderFinance -DestinationPath SpiderFinance-Portable.zip
 
       - name: Crear instalador
         run: |
           choco install innosetup -y --no-progress
           $v = python -c "from telarana import __version__; print(__version__)"
-          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DAppVersion=$v" instalador\telarana.iss
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DAppVersion=$v" instalador\spiderfinance.iss
 
       - uses: actions/upload-artifact@v4
         with:
-          name: TELARANA-Windows
+          name: SpiderFinance-Windows
           path: |
-            salida/TELARANA-Setup.exe
-            TELARANA-Portable.zip
+            salida/SpiderFinance-Setup.exe
+            SpiderFinance-Portable.zip
 
       - name: Publicar en Releases
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            salida/TELARANA-Setup.exe
-            TELARANA-Portable.zip
+            salida/SpiderFinance-Setup.exe
+            SpiderFinance-Portable.zip

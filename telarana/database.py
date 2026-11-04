@@ -9,23 +9,25 @@ ROOT = Path(__file__).resolve().parent.parent
 LEGACY_DIR = ROOT / "data"  # ubicación de las versiones anteriores
 # Los datos viven en la carpeta del usuario, fuera del programa: actualizar o reemplazar
 # los archivos de la aplicación nunca los borra.
-DATA_DIR = Path(os.environ.get("APPDATA") or Path.home()) / "TELARANA"
+APPDATA_BASE = Path(os.environ.get("APPDATA") or Path.home())
+DATA_DIR = APPDATA_BASE / "SpiderFinance"
+OLD_DATA_DIR = APPDATA_BASE / "TELARANA"  # nombre anterior de la aplicación
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def _migrate_legacy():
-    """Copia (una sola vez) la base y los ajustes de la carpeta data/ antigua."""
-    for name in ("telarana.db", "ajustes.json"):
-        old, new = LEGACY_DIR / name, DATA_DIR / name
-        try:
-            if old.exists() and not new.exists():
-                shutil.copy2(old, new)
-        except OSError:
-            pass
+    """Copia (una sola vez) la base y los ajustes de las ubicaciones anteriores."""
+    for old_dir in (OLD_DATA_DIR, LEGACY_DIR):
+        for name in ("telarana.db", "ajustes.json"):
+            old, new = old_dir / name, DATA_DIR / name
+            try:
+                if old.exists() and not new.exists():
+                    shutil.copy2(old, new)
+            except OSError:
+                pass
 
 
-if not getattr(sys, "frozen", False):
-    _migrate_legacy()
+_migrate_legacy()
 DB_PATH = DATA_DIR / "telarana.db"
 
 def connect():
