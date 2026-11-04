@@ -14,6 +14,13 @@ actualizar la aplicación no borra nada.
 > Windows Defender o SmartScreen pueden advertir sobre programas sin firma digital.
 > Es una advertencia habitual en aplicaciones nuevas hechas con PyInstaller.
 
+## Versión para celular
+
+La carpeta `movil/` es una app web instalable (PWA) con las mismas secciones. Se publica sola en
+GitHub Pages: abre `https://nilsonlopezdev.github.io/SpiderFinance/` en el celular y usa
+**Agregar a pantalla de inicio** (Chrome: menú ⋮ → *Instalar app*; iPhone: Compartir → *Añadir a pantalla de inicio*).
+Funciona sin internet. Los datos se guardan solo en el navegador de ese teléfono y no se sincronizan con el PC.
+
 ## Ejecutar desde el código
 
 Requiere Python 3.10 o superior.

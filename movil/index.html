@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>SpiderFinance</title>
+<meta name="description" content="SpiderFinance: tus finanzas personales en el celular.">
+<meta name="theme-color" content="#070A10">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="SpiderFinance">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand"><img src="assets/logo.png" alt="" width="40" height="40"><div><b>SpiderFinance</b><small>No Hay Plata</small></div></div>
+  <div class="month" id="monthBar">
+    <button data-act="month-prev" aria-label="Mes anterior"><svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg></button>
+    <span id="monthLabel"></span>
+    <button data-act="month-next" aria-label="Mes siguiente"><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></button>
+  </div>
+</header>
+<main id="view" tabindex="-1"></main>
+<nav class="tabs" id="tabs"></nav>
+<script src="app.js"></script>
+</body>
+</html>
